@@ -1,0 +1,307 @@
+name: Deploy to Cloudflare
+
+on:
+  push:
+    branches: ["main", "master"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".node-version"
+          cache: "pnpm"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.8.1"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # ---------------------------------------------------------------------
+      # Configuration model (important for fork sync compatibility / idempotence)
+      #
+      # 1) All per-instance config should live in GitHub Secrets / Variables, NOT
+      #    in the workflow file itself. This way upstream updates to this workflow
+      #    won't force users to re-edit it, and won't change resource names.
+      #
+      # 2) The defaults below derive from the fork repository name (lowercased),
+      #    so they remain stable across upstream syncs.
+      #
+      # Required secrets:
+      # - CLOUDFLARE_API_TOKEN: Cloudflare API Token with permissions for
+      #   Workers, Pages and D1.
+      #
+      # Optional (recommended) secret/variable:
+      # - CLOUDFLARE_ACCOUNT_ID: If not provided, we will fetch the first account
+      #   id accessible by the token.
+      #
+      # Optional variables (recommended to avoid collisions if you deploy multiple instances):
+      # - UPTIMER_PREFIX: Base name for Worker/Pages/D1. Defaults to repo name slug.
+      # - UPTIMER_WORKER_NAME / UPTIMER_PAGES_PROJECT / UPTIMER_D1_NAME: Override individual names.
+      # - UPTIMER_D1_BINDING: D1 binding name in Worker (default: DB).
+      #
+      # Optional secret:
+      # - UPTIMER_ADMIN_TOKEN: If set, we will upsert the Worker secret ADMIN_TOKEN.
+      # ---------------------------------------------------------------------
+
+      - name: Resolve Cloudflare Account ID
+        id: cf_account
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
+          if [[ -z "$ACCOUNT_ID" ]]; then
+            ACCOUNT_ID="$(
+              curl -fsSL "https://api.cloudflare.com/client/v4/accounts" \
+                -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+                -H "Content-Type: application/json" \
+              | jq -r '.result[0].id'
+            )"
+          fi
+
+          if [[ -z "$ACCOUNT_ID" || "$ACCOUNT_ID" == "null" ]]; then
+            echo "Failed to resolve Cloudflare account id."
+            echo "Set CLOUDFLARE_ACCOUNT_ID (secret or variable) or ensure CLOUDFLARE_API_TOKEN has access."
+            exit 1
+          fi
+
+          echo "CLOUDFLARE_ACCOUNT_ID=$ACCOUNT_ID" >> "$GITHUB_ENV"
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Compute deploy names
+        id: names
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Slugify repo name: keep [a-z0-9-], map other chars to '-'.
+          repo_name="${GITHUB_REPOSITORY#*/}"
+          default_slug="$(echo "$repo_name" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/^-+//; s/-+$//')"
+          if [[ -z "$default_slug" ]]; then
+            default_slug="uptimer"
+          fi
+
+          prefix="${UPTIMER_PREFIX:-$default_slug}"
+          worker_name="${UPTIMER_WORKER_NAME:-$prefix}"
+          pages_project="${UPTIMER_PAGES_PROJECT:-$prefix}"
+          d1_name="${UPTIMER_D1_NAME:-$prefix}"
+          d1_binding="${UPTIMER_D1_BINDING:-DB}"
+
+          echo "WORKER_NAME=$worker_name" >> "$GITHUB_ENV"
+          echo "PAGES_PROJECT=$pages_project" >> "$GITHUB_ENV"
+          echo "D1_NAME=$d1_name" >> "$GITHUB_ENV"
+          echo "D1_BINDING=$d1_binding" >> "$GITHUB_ENV"
+          echo "DEFAULT_BRANCH=${DEFAULT_BRANCH:-main}" >> "$GITHUB_ENV"
+
+          echo "worker_name=$worker_name" >> "$GITHUB_OUTPUT"
+          echo "pages_project=$pages_project" >> "$GITHUB_OUTPUT"
+          echo "d1_name=$d1_name" >> "$GITHUB_OUTPUT"
+          echo "d1_binding=$d1_binding" >> "$GITHUB_OUTPUT"
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          UPTIMER_PREFIX: ${{ vars.UPTIMER_PREFIX }}
+          UPTIMER_WORKER_NAME: ${{ vars.UPTIMER_WORKER_NAME }}
+          UPTIMER_PAGES_PROJECT: ${{ vars.UPTIMER_PAGES_PROJECT }}
+          UPTIMER_D1_NAME: ${{ vars.UPTIMER_D1_NAME }}
+          UPTIMER_D1_BINDING: ${{ vars.UPTIMER_D1_BINDING }}
+
+      - name: Ensure D1 exists and get id
+        id: d1
+        shell: bash
+        working-directory: apps/worker
+        run: |
+          set -euo pipefail
+
+          if pnpm exec wrangler d1 info "$D1_NAME" --json > d1.json 2>/dev/null; then
+            echo "D1 database exists: $D1_NAME"
+          else
+            echo "Creating D1 database: $D1_NAME"
+            pnpm exec wrangler d1 create "$D1_NAME"
+            pnpm exec wrangler d1 info "$D1_NAME" --json > d1.json
+          fi
+
+          D1_ID="$(jq -r '.uuid // .result.uuid // empty' d1.json)"
+          if [[ -z "$D1_ID" || "$D1_ID" == "null" ]]; then
+            echo "Failed to extract D1 id from wrangler output:"
+            cat d1.json
+            exit 1
+          fi
+
+          echo "D1_ID=$D1_ID" >> "$GITHUB_ENV"
+          echo "d1_id=$D1_ID" >> "$GITHUB_OUTPUT"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.cf_account.outputs.account_id }}
+
+      - name: Generate CI wrangler config (inject D1 id + stable names)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+          import sys
+
+          src = pathlib.Path("apps/worker/wrangler.toml")
+          dst = pathlib.Path("apps/worker/wrangler.ci.toml")
+
+          worker_name = os.environ["WORKER_NAME"]
+          d1_binding = os.environ.get("D1_BINDING", "DB")
+          d1_name = os.environ["D1_NAME"]
+          d1_id = os.environ["D1_ID"]
+
+          text = src.read_text(encoding="utf-8")
+
+          # 1) Patch top-level Worker name for stable, fork-configurable deploys.
+          text, n = re.subn(
+              r'(?m)^name\s*=\s*"[^\"]*"\s*$',
+              f'name = "{worker_name}"',
+              text,
+              count=1,
+          )
+          if n < 1:
+              raise SystemExit("Expected a `name = \"...\"` entry in apps/worker/wrangler.toml")
+
+          # 2) Patch the first [[d1_databases]] block that matches binding.
+          #    Keep other blocks untouched for forward-compat (future resources/envs).
+          block_re = re.compile(r'(?ms)^\[\[d1_databases\]\]\s*$.*?(?=^\[\[|^\[[a-zA-Z]|\Z)')
+
+          def set_or_insert_kv(block: str, key: str, value: str) -> str:
+              kv_re = re.compile(rf'(?m)^{re.escape(key)}\s*=\s*"[^\"]*"\s*$')
+              if kv_re.search(block):
+                  return kv_re.sub(f'{key} = "{value}"', block, count=1)
+
+              # Insert right after the binding line if present; otherwise after the header.
+              binding_line = re.search(r'(?m)^binding\s*=\s*"[^\"]*"\s*$', block)
+              if binding_line:
+                  insert_at = binding_line.end()
+                  return block[:insert_at] + f'\n{key} = "{value}"' + block[insert_at:]
+
+              header_end = block.find("\n")
+              if header_end == -1:
+                  return block + f'\n{key} = "{value}"\n'
+              return block[: header_end + 1] + f'{key} = "{value}"\n' + block[header_end + 1 :]
+
+          replaced = False
+          out = []
+          last = 0
+          for m in block_re.finditer(text):
+              out.append(text[last : m.start()])
+              block = m.group(0)
+              binding_m = re.search(r'(?m)^binding\s*=\s*"([^\"]+)"\s*$', block)
+              if (not replaced) and binding_m and binding_m.group(1) == d1_binding:
+                  block = set_or_insert_kv(block, "database_name", d1_name)
+                  block = set_or_insert_kv(block, "database_id", d1_id)
+                  replaced = True
+              out.append(block)
+              last = m.end()
+          out.append(text[last:])
+
+          if not replaced:
+              raise SystemExit(f'No [[d1_databases]] block found with binding = "{d1_binding}".')
+
+          dst.write_text("".join(out), encoding="utf-8")
+          print(f"Wrote {dst}")
+          PY
+
+      - name: Apply D1 migrations (remote)
+        shell: bash
+        working-directory: apps/worker
+        run: |
+          set -euo pipefail
+          pnpm exec wrangler d1 migrations apply "$D1_NAME" --remote --config wrangler.ci.toml
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.cf_account.outputs.account_id }}
+
+      - name: Deploy Worker (idempotent)
+        shell: bash
+        working-directory: apps/worker
+        run: |
+          set -euo pipefail
+          pnpm exec wrangler deploy --config wrangler.ci.toml --keep-vars
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.cf_account.outputs.account_id }}
+
+      - name: Upsert Worker secrets (optional)
+        if: ${{ secrets.UPTIMER_ADMIN_TOKEN != '' }}
+        shell: bash
+        working-directory: apps/worker
+        run: |
+          set -euo pipefail
+          printf '%s' "$UPTIMER_ADMIN_TOKEN" | pnpm exec wrangler secret put ADMIN_TOKEN --name "$WORKER_NAME" --config wrangler.ci.toml
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.cf_account.outputs.account_id }}
+          UPTIMER_ADMIN_TOKEN: ${{ secrets.UPTIMER_ADMIN_TOKEN }}
+
+      - name: Build Pages (Vite)
+        working-directory: apps/web
+        run: pnpm build
+
+      - name: Ensure Pages project exists (idempotent)
+        shell: bash
+        working-directory: apps/worker
+        run: |
+          set -euo pipefail
+
+          set +e
+          output="$(pnpm exec wrangler pages project create "$PAGES_PROJECT" --production-branch "$DEFAULT_BRANCH" 2>&1)"
+          code="$?"
+          set -e
+
+          if [[ "$code" -eq 0 ]]; then
+            echo "Created Pages project: $PAGES_PROJECT"
+            exit 0
+          fi
+
+          if echo "$output" | grep -qiE "already exists|already a project"; then
+            echo "Pages project already exists: $PAGES_PROJECT"
+            exit 0
+          fi
+
+          # Fallback: if the error message format changes, verify via listing.
+          if pnpm exec wrangler pages project list 2>/dev/null | grep -q "$PAGES_PROJECT"; then
+            echo "Pages project already exists: $PAGES_PROJECT"
+            exit 0
+          fi
+
+          echo "$output"
+          exit "$code"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.cf_account.outputs.account_id }}
+
+      - name: Deploy Pages (idempotent)
+        shell: bash
+        working-directory: apps/worker
+        run: |
+          set -euo pipefail
+          pnpm exec wrangler pages deploy ../web/dist \
+            --project-name "$PAGES_PROJECT" \
+            --branch "$DEFAULT_BRANCH" \
+            --commit-hash "$GITHUB_SHA" \
+            --commit-message "$GITHUB_SHA"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.cf_account.outputs.account_id }}
