@@ -1,6 +1,7 @@
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 import type { MonitorAnalyticsDayPoint } from '../api/types';
+import { useTheme } from '../app/ThemeContext';
 
 interface DailyUptimeChartProps {
   points: MonitorAnalyticsDayPoint[];
@@ -12,6 +13,9 @@ function formatDay(ts: number): string {
 }
 
 export function DailyUptimeChart({ points, height = 220 }: DailyUptimeChartProps) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+
   const data = points.map((p) => ({
     day: p.day_start_at,
     uptime_pct: Number(p.uptime_pct.toFixed(3)),
@@ -19,20 +23,30 @@ export function DailyUptimeChart({ points, height = 220 }: DailyUptimeChartProps
   }));
 
   if (data.length === 0) {
-    return <div className="flex items-center justify-center h-[220px] text-gray-500">No data</div>;
+    return <div className="flex items-center justify-center h-[220px] text-slate-500 dark:text-slate-400">No data</div>;
   }
+
+  const axisColor = isDark ? '#64748b' : '#9ca3af';
+  const uptimeColor = isDark ? '#34d399' : '#22c55e';
+  const unknownColor = isDark ? '#64748b' : '#9ca3af';
 
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-        <XAxis dataKey="day" tickFormatter={formatDay} tick={{ fontSize: 12 }} stroke="#9ca3af" />
-        <YAxis tick={{ fontSize: 12 }} stroke="#9ca3af" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+        <XAxis dataKey="day" tickFormatter={formatDay} tick={{ fontSize: 12, fill: axisColor }} stroke={axisColor} />
+        <YAxis tick={{ fontSize: 12, fill: axisColor }} stroke={axisColor} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
         <Tooltip
           labelFormatter={(v) => new Date(Number(v) * 1000).toLocaleDateString()}
           formatter={(v: number, name) => [`${v}%`, name === 'uptime_pct' ? 'Uptime' : 'Unknown']}
+          contentStyle={{
+            backgroundColor: isDark ? '#1e293b' : '#ffffff',
+            borderColor: isDark ? '#334155' : '#e2e8f0',
+            borderRadius: '0.5rem',
+            color: isDark ? '#f1f5f9' : '#0f172a',
+          }}
         />
-        <Line type="monotone" dataKey="uptime_pct" stroke="#22c55e" strokeWidth={2} dot={false} />
-        <Line type="monotone" dataKey="unknown_pct" stroke="#9ca3af" strokeWidth={1} dot={false} />
+        <Line type="monotone" dataKey="uptime_pct" stroke={uptimeColor} strokeWidth={2} dot={false} />
+        <Line type="monotone" dataKey="unknown_pct" stroke={unknownColor} strokeWidth={1} dot={false} />
       </LineChart>
     </ResponsiveContainer>
   );

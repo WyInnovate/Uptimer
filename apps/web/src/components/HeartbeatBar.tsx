@@ -9,14 +9,14 @@ interface HeartbeatBarProps {
 function getStatusColor(status: CheckStatus): string {
   switch (status) {
     case 'up':
-      return 'bg-emerald-500';
+      return 'bg-emerald-500 dark:bg-emerald-400';
     case 'down':
-      return 'bg-red-500';
+      return 'bg-red-500 dark:bg-red-400';
     case 'maintenance':
-      return 'bg-blue-500';
+      return 'bg-blue-500 dark:bg-blue-400';
     case 'unknown':
     default:
-      return 'bg-slate-300';
+      return 'bg-slate-300 dark:bg-slate-600';
   }
 }
 
@@ -43,7 +43,7 @@ interface TooltipProps {
 function Tooltip({ heartbeat, position }: TooltipProps) {
   return (
     <div
-      className="fixed z-50 px-3 py-2 text-xs bg-slate-900 text-white rounded-lg shadow-lg pointer-events-none animate-fade-in"
+      className="fixed z-50 px-3 py-2 text-xs bg-slate-900 dark:bg-slate-700 text-white rounded-lg shadow-lg pointer-events-none animate-fade-in"
       style={{
         left: position.x,
         top: position.y - 70,
@@ -55,10 +55,10 @@ function Tooltip({ heartbeat, position }: TooltipProps) {
         <span className={`w-2 h-2 rounded-full ${getStatusColor(heartbeat.status)}`} />
         <span className="capitalize">{heartbeat.status}</span>
         {heartbeat.latency_ms !== null && (
-          <span className="text-slate-400">• {heartbeat.latency_ms}ms</span>
+          <span className="text-slate-400 dark:text-slate-300">• {heartbeat.latency_ms}ms</span>
         )}
       </div>
-      <div className="absolute left-1/2 -bottom-1 -translate-x-1/2 w-2 h-2 bg-slate-900 rotate-45" />
+      <div className="absolute left-1/2 -bottom-1 -translate-x-1/2 w-2 h-2 bg-slate-900 dark:bg-slate-700 rotate-45" />
     </div>
   );
 }
@@ -95,7 +95,7 @@ export function HeartbeatBar({ heartbeats, maxBars = 60 }: HeartbeatBarProps) {
           Array.from({ length: maxBars - reversed.length }).map((_, idx) => (
             <div
               key={`empty-${idx}`}
-              className="flex-1 min-w-[3px] sm:min-w-[4px] max-w-[6px] sm:max-w-[8px] h-[60%] rounded-sm bg-slate-200"
+              className="flex-1 min-w-[3px] sm:min-w-[4px] max-w-[6px] sm:max-w-[8px] h-[60%] rounded-sm bg-slate-200 dark:bg-slate-700"
             />
           ))}
       </div>

@@ -6,8 +6,8 @@ import { Button } from './ui';
 const impactOptions: IncidentImpact[] = ['none', 'minor', 'major', 'critical'];
 const statusOptions: Array<Exclude<IncidentStatus, 'resolved'>> = ['investigating', 'identified', 'monitoring'];
 
-const inputClass = 'w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:border-slate-400 focus:ring-1 focus:ring-slate-400 transition-colors';
-const labelClass = 'block text-sm font-medium text-slate-700 mb-1.5';
+const inputClass = 'w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:border-slate-400 dark:focus:border-slate-500 focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-colors';
+const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5';
 
 export function IncidentForm({
   monitors,
@@ -41,16 +41,16 @@ export function IncidentForm({
       <div>
         <div className={labelClass}>Affected Monitors</div>
         {monitors.length === 0 ? (
-          <div className="text-sm text-slate-500">No monitors available</div>
+          <div className="text-sm text-slate-500 dark:text-slate-400">No monitors available</div>
         ) : (
-          <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-3 space-y-2">
+          <div className="max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-600 rounded-lg p-3 space-y-2 bg-white dark:bg-slate-700">
             {monitors.map((m) => (
-              <label key={m.id} className="flex items-center gap-2.5 text-sm cursor-pointer hover:text-slate-900">
+              <label key={m.id} className="flex items-center gap-2.5 text-sm cursor-pointer text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100">
                 <input
                   type="checkbox"
                   checked={selectedMonitorIds.includes(m.id)}
                   onChange={(e) => setSelectedMonitorIds(e.target.checked ? [...selectedMonitorIds, m.id] : selectedMonitorIds.filter((id) => id !== m.id))}
-                  className="rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                  className="rounded border-slate-300 dark:border-slate-500 text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-600 focus:ring-slate-500"
                 />
                 <span>{m.name}</span>
               </label>
@@ -58,7 +58,7 @@ export function IncidentForm({
           </div>
         )}
         {monitors.length > 0 && selectedMonitorIds.length === 0 && (
-          <div className="mt-2 text-sm text-red-500">Select at least one monitor</div>
+          <div className="mt-2 text-sm text-red-500 dark:text-red-400">Select at least one monitor</div>
         )}
       </div>
 
@@ -90,7 +90,7 @@ export function IncidentForm({
       {normalized.length > 0 && (
         <div>
           <div className={labelClass}>Preview</div>
-          <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
+          <div className="border border-slate-200 dark:border-slate-600 rounded-lg p-4 bg-slate-50 dark:bg-slate-700/50">
             <Markdown text={normalized} />
           </div>
         </div>

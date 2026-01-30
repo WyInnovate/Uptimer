@@ -1,5 +1,6 @@
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import type { LatencyPoint } from '../api/types';
+import { useTheme } from '../app/ThemeContext';
 
 interface LatencyChartProps {
   points: LatencyPoint[];
@@ -11,6 +12,9 @@ function formatTime(timestamp: number): string {
 }
 
 export function LatencyChart({ points, height = 200 }: LatencyChartProps) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+
   const data = points
     .filter((p) => p.status === 'up' && p.latency_ms !== null)
     .map((p) => ({
@@ -20,11 +24,14 @@ export function LatencyChart({ points, height = 200 }: LatencyChartProps) {
 
   if (data.length === 0) {
     return (
-      <div className="flex items-center justify-center h-[200px] text-gray-500">
+      <div className="flex items-center justify-center h-[200px] text-slate-500 dark:text-slate-400">
         No latency data available
       </div>
     );
   }
+
+  const axisColor = isDark ? '#64748b' : '#9ca3af';
+  const lineColor = isDark ? '#34d399' : '#22c55e';
 
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -32,22 +39,28 @@ export function LatencyChart({ points, height = 200 }: LatencyChartProps) {
         <XAxis
           dataKey="time"
           tickFormatter={formatTime}
-          tick={{ fontSize: 12 }}
-          stroke="#9ca3af"
+          tick={{ fontSize: 12, fill: axisColor }}
+          stroke={axisColor}
         />
         <YAxis
-          tick={{ fontSize: 12 }}
-          stroke="#9ca3af"
+          tick={{ fontSize: 12, fill: axisColor }}
+          stroke={axisColor}
           tickFormatter={(v) => `${v}ms`}
         />
         <Tooltip
           labelFormatter={(v) => new Date(Number(v) * 1000).toLocaleString()}
           formatter={(v: number) => [`${v}ms`, 'Latency']}
+          contentStyle={{
+            backgroundColor: isDark ? '#1e293b' : '#ffffff',
+            borderColor: isDark ? '#334155' : '#e2e8f0',
+            borderRadius: '0.5rem',
+            color: isDark ? '#f1f5f9' : '#0f172a',
+          }}
         />
         <Line
           type="monotone"
           dataKey="latency"
-          stroke="#22c55e"
+          stroke={lineColor}
           strokeWidth={2}
           dot={false}
         />

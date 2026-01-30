@@ -78,18 +78,18 @@ export function AdminAnalytics() {
   const outages = outagesQuery.data?.pages.flatMap((p) => p.outages) ?? [];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-900">
+      <header className="bg-white dark:bg-slate-800 shadow-sm dark:shadow-none dark:border-b dark:border-slate-700">
         <div className="max-w-6xl mx-auto px-4 py-3 sm:py-4 flex justify-between items-center">
-          <h1 className="text-lg sm:text-xl font-bold text-gray-900">Analytics</h1>
+          <h1 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-slate-100">Analytics</h1>
           <div className="flex gap-2 sm:gap-4">
-            <Link to="/admin" className="text-sm text-gray-600 hover:text-gray-900 px-2 py-1.5 rounded-lg active:bg-gray-100">
+            <Link to="/admin" className="text-sm text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-100 px-2 py-1.5 rounded-lg active:bg-gray-100 dark:active:bg-slate-700">
               Dashboard
             </Link>
-            <Link to="/" className="text-sm text-gray-600 hover:text-gray-900 px-2 py-1.5 rounded-lg active:bg-gray-100">
+            <Link to="/" className="text-sm text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-100 px-2 py-1.5 rounded-lg active:bg-gray-100 dark:active:bg-slate-700">
               Status
             </Link>
-            <button onClick={logout} className="text-sm text-red-600 hover:text-red-800 px-2 py-1.5 rounded-lg active:bg-red-50">
+            <button onClick={logout} className="text-sm text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 px-2 py-1.5 rounded-lg active:bg-red-50 dark:active:bg-red-900/20">
               Logout
             </button>
           </div>
@@ -98,15 +98,15 @@ export function AdminAnalytics() {
 
       <main className="max-w-6xl mx-auto px-4 py-4 sm:py-6 space-y-6 sm:space-y-10">
         {/* Overview */}
-        <section className="bg-white rounded-lg shadow p-4 sm:p-6">
+        <section className="bg-white dark:bg-slate-800 rounded-lg shadow dark:shadow-none dark:border dark:border-slate-700 p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-            <h2 className="text-lg font-semibold">Overview</h2>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Overview</h2>
             <div className="flex gap-2">
               {(['24h', '7d'] as const).map((r) => (
                 <button
                   key={r}
                   onClick={() => setOverviewRange(r)}
-                  className={`px-3 py-1.5 rounded text-sm ${overviewRange === r ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                  className={`px-3 py-1.5 rounded text-sm ${overviewRange === r ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300'}`}
                 >
                   {r}
                 </button>
@@ -115,41 +115,41 @@ export function AdminAnalytics() {
           </div>
 
           {overviewQuery.isLoading ? (
-            <div className="mt-4 text-gray-500">Loading...</div>
+            <div className="mt-4 text-gray-500 dark:text-slate-400">Loading...</div>
           ) : overviewQuery.data ? (
             <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="p-4 border rounded">
-                <div className="text-xs text-gray-500">Uptime</div>
-                <div className="text-lg font-semibold">{formatPct(overviewQuery.data.totals.uptime_pct)}</div>
+              <div className="p-4 border dark:border-slate-600 rounded bg-white dark:bg-slate-700/50">
+                <div className="text-xs text-gray-500 dark:text-slate-400">Uptime</div>
+                <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">{formatPct(overviewQuery.data.totals.uptime_pct)}</div>
               </div>
-              <div className="p-4 border rounded">
-                <div className="text-xs text-gray-500">Downtime</div>
-                <div className="text-lg font-semibold">{formatSec(overviewQuery.data.totals.downtime_sec)}</div>
+              <div className="p-4 border dark:border-slate-600 rounded bg-white dark:bg-slate-700/50">
+                <div className="text-xs text-gray-500 dark:text-slate-400">Downtime</div>
+                <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">{formatSec(overviewQuery.data.totals.downtime_sec)}</div>
               </div>
-              <div className="p-4 border rounded">
-                <div className="text-xs text-gray-500">Alerts</div>
-                <div className="text-lg font-semibold">{overviewQuery.data.alerts.count}</div>
+              <div className="p-4 border dark:border-slate-600 rounded bg-white dark:bg-slate-700/50">
+                <div className="text-xs text-gray-500 dark:text-slate-400">Alerts</div>
+                <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">{overviewQuery.data.alerts.count}</div>
               </div>
-              <div className="p-4 border rounded">
-                <div className="text-xs text-gray-500">MTTR</div>
-                <div className="text-lg font-semibold">{overviewQuery.data.outages.mttr_sec === null ? '-' : formatSec(overviewQuery.data.outages.mttr_sec)}</div>
+              <div className="p-4 border dark:border-slate-600 rounded bg-white dark:bg-slate-700/50">
+                <div className="text-xs text-gray-500 dark:text-slate-400">MTTR</div>
+                <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">{overviewQuery.data.outages.mttr_sec === null ? '-' : formatSec(overviewQuery.data.outages.mttr_sec)}</div>
               </div>
             </div>
           ) : (
-            <div className="mt-4 text-gray-500">Failed to load overview</div>
+            <div className="mt-4 text-gray-500 dark:text-slate-400">Failed to load overview</div>
           )}
         </section>
 
         {/* Monitor */}
-        <section className="bg-white rounded-lg shadow p-4 sm:p-6 space-y-4 sm:space-y-6">
+        <section className="bg-white dark:bg-slate-800 rounded-lg shadow dark:shadow-none dark:border dark:border-slate-700 p-4 sm:p-6 space-y-4 sm:space-y-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <h2 className="text-lg font-semibold">Monitor</h2>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Monitor</h2>
 
             <div className="flex flex-col sm:flex-row gap-3">
               <select
                 value={selectedMonitorId ?? ''}
                 onChange={(e) => setSelectedMonitorId(e.target.value ? Number(e.target.value) : null)}
-                className="border rounded px-3 py-2 text-sm"
+                className="border dark:border-slate-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
               >
                 <option value="" disabled>
                   Select a monitor…
@@ -164,7 +164,7 @@ export function AdminAnalytics() {
               <select
                 value={monitorRange}
                 onChange={(e) => setMonitorRange(e.target.value as AnalyticsRange)}
-                className="border rounded px-3 py-2 text-sm"
+                className="border dark:border-slate-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
               >
                 {(['24h', '7d', '30d', '90d'] as const).map((r) => (
                   <option key={r} value={r}>
@@ -176,47 +176,47 @@ export function AdminAnalytics() {
           </div>
 
           {monitorAnalyticsQuery.isLoading ? (
-            <div className="text-gray-500">Loading…</div>
+            <div className="text-gray-500 dark:text-slate-400">Loading…</div>
           ) : !monitorAnalyticsQuery.data ? (
-            <div className="text-gray-500">Select a monitor to view analytics</div>
+            <div className="text-gray-500 dark:text-slate-400">Select a monitor to view analytics</div>
           ) : (
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="p-4 border rounded">
-                  <div className="text-xs text-gray-500">Uptime</div>
-                  <div className="text-lg font-semibold">{formatPct(monitorAnalyticsQuery.data.uptime_pct)}</div>
+                <div className="p-4 border dark:border-slate-600 rounded bg-white dark:bg-slate-700/50">
+                  <div className="text-xs text-gray-500 dark:text-slate-400">Uptime</div>
+                  <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">{formatPct(monitorAnalyticsQuery.data.uptime_pct)}</div>
                 </div>
-                <div className="p-4 border rounded">
-                  <div className="text-xs text-gray-500">Unknown</div>
-                  <div className="text-lg font-semibold">{formatPct(monitorAnalyticsQuery.data.unknown_pct)}</div>
+                <div className="p-4 border dark:border-slate-600 rounded bg-white dark:bg-slate-700/50">
+                  <div className="text-xs text-gray-500 dark:text-slate-400">Unknown</div>
+                  <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">{formatPct(monitorAnalyticsQuery.data.unknown_pct)}</div>
                 </div>
-                <div className="p-4 border rounded">
-                  <div className="text-xs text-gray-500">P95 Latency</div>
-                  <div className="text-lg font-semibold">
+                <div className="p-4 border dark:border-slate-600 rounded bg-white dark:bg-slate-700/50">
+                  <div className="text-xs text-gray-500 dark:text-slate-400">P95 Latency</div>
+                  <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                     {monitorAnalyticsQuery.data.p95_latency_ms === null ? '-' : `${monitorAnalyticsQuery.data.p95_latency_ms}ms`}
                   </div>
                 </div>
-                <div className="p-4 border rounded">
-                  <div className="text-xs text-gray-500">P50 Latency</div>
-                  <div className="text-lg font-semibold">
+                <div className="p-4 border dark:border-slate-600 rounded bg-white dark:bg-slate-700/50">
+                  <div className="text-xs text-gray-500 dark:text-slate-400">P50 Latency</div>
+                  <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                     {monitorAnalyticsQuery.data.p50_latency_ms === null ? '-' : `${monitorAnalyticsQuery.data.p50_latency_ms}ms`}
                   </div>
                 </div>
               </div>
 
               <div className="grid md:grid-cols-2 gap-6">
-                <div className="border rounded p-4">
-                  <div className="text-sm font-medium mb-2">Uptime (Daily)</div>
+                <div className="border dark:border-slate-600 rounded p-4 bg-white dark:bg-slate-700/50">
+                  <div className="text-sm font-medium mb-2 text-slate-900 dark:text-slate-100">Uptime (Daily)</div>
                   {monitorRange === '24h' ? (
-                    <div className="text-sm text-gray-500 h-[220px] flex items-center justify-center">
+                    <div className="text-sm text-gray-500 dark:text-slate-400 h-[220px] flex items-center justify-center">
                       Daily rollup charts are available for 7d/30d/90d
                     </div>
                   ) : (
                     <DailyUptimeChart points={monitorAnalyticsQuery.data.daily} />
                   )}
                 </div>
-                <div className="border rounded p-4">
-                  <div className="text-sm font-medium mb-2">Latency</div>
+                <div className="border dark:border-slate-600 rounded p-4 bg-white dark:bg-slate-700/50">
+                  <div className="text-sm font-medium mb-2 text-slate-900 dark:text-slate-100">Latency</div>
                   {monitorRange === '24h' ? (
                     <LatencyChart points={monitorAnalyticsQuery.data.points} />
                   ) : (
@@ -225,24 +225,24 @@ export function AdminAnalytics() {
                 </div>
               </div>
 
-              <div className="border rounded p-3 sm:p-4">
+              <div className="border dark:border-slate-600 rounded p-3 sm:p-4 bg-white dark:bg-slate-700/50">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <div className="text-sm font-medium">Outages</div>
+                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">Outages</div>
                   {selectedMonitor && (
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-gray-500 dark:text-slate-400">
                       {selectedMonitor.name} (#{selectedMonitor.id})
                     </div>
                   )}
                 </div>
 
                 {outagesQuery.isLoading ? (
-                  <div className="mt-3 text-gray-500">Loading outages…</div>
+                  <div className="mt-3 text-gray-500 dark:text-slate-400">Loading outages…</div>
                 ) : outages.length === 0 ? (
-                  <div className="mt-3 text-gray-500">No outages in this range</div>
+                  <div className="mt-3 text-gray-500 dark:text-slate-400">No outages in this range</div>
                 ) : (
                   <div className="mt-3 overflow-x-auto">
                     <table className="w-full text-sm min-w-[500px]">
-                      <thead className="text-xs text-gray-500">
+                      <thead className="text-xs text-gray-500 dark:text-slate-400">
                         <tr>
                           <th className="text-left py-2 pr-4">Start</th>
                           <th className="text-left py-2 pr-4">End</th>
@@ -250,13 +250,13 @@ export function AdminAnalytics() {
                           <th className="text-left py-2 pr-4">Last error</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y">
+                      <tbody className="divide-y dark:divide-slate-600">
                         {outages.map((o) => (
                           <tr key={o.id}>
-                            <td className="py-2 pr-4 whitespace-nowrap">{new Date(o.started_at * 1000).toLocaleString()}</td>
-                            <td className="py-2 pr-4 whitespace-nowrap">{o.ended_at ? new Date(o.ended_at * 1000).toLocaleString() : 'Ongoing'}</td>
-                            <td className="py-2 pr-4 text-gray-600">{o.initial_error ?? '-'}</td>
-                            <td className="py-2 pr-4 text-gray-600">{o.last_error ?? '-'}</td>
+                            <td className="py-2 pr-4 whitespace-nowrap text-slate-900 dark:text-slate-100">{new Date(o.started_at * 1000).toLocaleString()}</td>
+                            <td className="py-2 pr-4 whitespace-nowrap text-slate-900 dark:text-slate-100">{o.ended_at ? new Date(o.ended_at * 1000).toLocaleString() : 'Ongoing'}</td>
+                            <td className="py-2 pr-4 text-gray-600 dark:text-slate-400">{o.initial_error ?? '-'}</td>
+                            <td className="py-2 pr-4 text-gray-600 dark:text-slate-400">{o.last_error ?? '-'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -267,7 +267,7 @@ export function AdminAnalytics() {
                         <button
                           onClick={() => outagesQuery.fetchNextPage()}
                           disabled={outagesQuery.isFetchingNextPage}
-                          className="px-3 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                          className="px-3 py-2 rounded bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600 disabled:opacity-50"
                         >
                           {outagesQuery.isFetchingNextPage ? 'Loading…' : 'Load more'}
                         </button>

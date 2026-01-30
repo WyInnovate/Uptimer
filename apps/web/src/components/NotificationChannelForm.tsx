@@ -9,8 +9,8 @@ interface NotificationChannelFormProps {
   isLoading?: boolean;
 }
 
-const inputClass = 'w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:border-slate-400 focus:ring-1 focus:ring-slate-400 transition-colors';
-const labelClass = 'block text-sm font-medium text-slate-700 mb-1.5';
+const inputClass = 'w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:border-slate-400 dark:focus:border-slate-500 focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-colors';
+const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5';
 
 export function NotificationChannelForm({ channel, onSubmit, onCancel, isLoading }: NotificationChannelFormProps) {
   const [name, setName] = useState(channel?.name ?? '');

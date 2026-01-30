@@ -17,7 +17,7 @@ import { MaintenanceWindowForm } from '../components/MaintenanceWindowForm';
 import { MonitorForm } from '../components/MonitorForm';
 import { NotificationChannelForm } from '../components/NotificationChannelForm';
 import { ResolveIncidentForm } from '../components/ResolveIncidentForm';
-import { Badge, Button, Card } from '../components/ui';
+import { Badge, Button, Card, ThemeToggle } from '../components/ui';
 
 type Tab = 'monitors' | 'notifications' | 'incidents' | 'maintenance';
 type ModalState =
@@ -83,25 +83,26 @@ export function AdminDashboard() {
   const monitorNameById = new Map((monitorsQuery.data?.monitors ?? []).map((m) => [m.id, m.name] as const));
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b border-slate-100">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+      <header className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center">
-          <h1 className="text-lg sm:text-xl font-bold text-slate-900">Admin Dashboard</h1>
+          <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">Admin Dashboard</h1>
           <div className="flex items-center gap-2 sm:gap-4">
-            <Link to="/admin/analytics" className="text-sm text-slate-500 hover:text-slate-900 transition-colors px-2 py-1.5 rounded-lg active:bg-slate-100">Analytics</Link>
-            <Link to="/" className="text-sm text-slate-500 hover:text-slate-900 transition-colors px-2 py-1.5 rounded-lg active:bg-slate-100">Status</Link>
-            <button onClick={logout} className="text-sm text-red-500 hover:text-red-700 transition-colors px-2 py-1.5 rounded-lg active:bg-red-50">Logout</button>
+            <ThemeToggle />
+            <Link to="/admin/analytics" className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors px-2 py-1.5 rounded-lg active:bg-slate-100 dark:active:bg-slate-700">Analytics</Link>
+            <Link to="/" className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors px-2 py-1.5 rounded-lg active:bg-slate-100 dark:active:bg-slate-700">Status</Link>
+            <button onClick={logout} className="text-sm text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors px-2 py-1.5 rounded-lg active:bg-red-50 dark:active:bg-red-900/20">Logout</button>
           </div>
         </div>
       </header>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-4 sm:pt-6">
-        <div className="flex gap-1 bg-slate-100 p-1 rounded-lg overflow-x-auto scrollbar-hide">
+        <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg overflow-x-auto scrollbar-hide">
           {tabs.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${tab === t.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${tab === t.key ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
             >
               <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={t.icon} /></svg>
               <span className="hidden xs:inline sm:inline">{t.label}</span>
@@ -114,42 +115,42 @@ export function AdminDashboard() {
         {tab === 'monitors' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold text-slate-900">Monitors</h2>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Monitors</h2>
               <Button onClick={() => { createMonitorMut.reset(); updateMonitorMut.reset(); setModal({ type: 'create-monitor' }); }}>Add Monitor</Button>
             </div>
             {monitorsQuery.isLoading ? (
-              <div className="text-slate-500">Loading...</div>
+              <div className="text-slate-500 dark:text-slate-400">Loading...</div>
             ) : monitorsQuery.isError ? (
               <Card className="p-8 text-center">
-                <div className="text-red-600 font-medium mb-2">Failed to load monitors</div>
-                <div className="text-sm text-slate-500">{formatError(monitorsQuery.error) ?? 'Unknown error'}</div>
+                <div className="text-red-600 dark:text-red-400 font-medium mb-2">Failed to load monitors</div>
+                <div className="text-sm text-slate-500 dark:text-slate-400">{formatError(monitorsQuery.error) ?? 'Unknown error'}</div>
               </Card>
             ) : !monitorsQuery.data?.monitors.length ? (
-              <Card className="p-6 sm:p-8 text-center text-slate-500">No monitors yet</Card>
+              <Card className="p-6 sm:p-8 text-center text-slate-500 dark:text-slate-400">No monitors yet</Card>
             ) : (
               <Card className="overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[600px]">
-                    <thead className="bg-slate-50 border-b border-slate-100">
+                    <thead className="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
                       <tr>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Name</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Type</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Target</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Status</th>
-                        <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wide">Actions</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Name</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Type</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Target</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Status</th>
+                        <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                       {monitorsQuery.data.monitors.map((m) => (
-                        <tr key={m.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900">{m.name}</td>
+                        <tr key={m.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                          <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">{m.name}</td>
                           <td className="px-3 sm:px-4 py-3"><Badge variant="info">{m.type}</Badge></td>
-                          <td className="px-3 sm:px-4 py-3 text-sm text-slate-500 truncate max-w-[200px]">{m.target}</td>
+                          <td className="px-3 sm:px-4 py-3 text-sm text-slate-500 dark:text-slate-400 truncate max-w-[200px]">{m.target}</td>
                           <td className="px-3 sm:px-4 py-3"><Badge variant={m.is_active ? 'up' : 'unknown'}>{m.is_active ? 'Active' : 'Paused'}</Badge></td>
                           <td className="px-3 sm:px-4 py-3 text-right whitespace-nowrap">
-                            <button onClick={() => { setTestingMonitorId(m.id); testMonitorMut.mutate(m.id); }} disabled={testingMonitorId === m.id} className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50 px-1.5 py-1">{testingMonitorId === m.id ? 'Testing...' : 'Test'}</button>
-                            <button onClick={() => { createMonitorMut.reset(); updateMonitorMut.reset(); setModal({ type: 'edit-monitor', monitor: m }); }} className="text-sm text-slate-600 hover:text-slate-900 px-1.5 py-1">Edit</button>
-                            <button onClick={() => confirm('Delete?') && deleteMonitorMut.mutate(m.id)} className="text-sm text-red-500 hover:text-red-700 px-1.5 py-1">Delete</button>
+                            <button onClick={() => { setTestingMonitorId(m.id); testMonitorMut.mutate(m.id); }} disabled={testingMonitorId === m.id} className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 disabled:opacity-50 px-1.5 py-1">{testingMonitorId === m.id ? 'Testing...' : 'Test'}</button>
+                            <button onClick={() => { createMonitorMut.reset(); updateMonitorMut.reset(); setModal({ type: 'edit-monitor', monitor: m }); }} className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-1.5 py-1">Edit</button>
+                            <button onClick={() => confirm('Delete?') && deleteMonitorMut.mutate(m.id)} className="text-sm text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 px-1.5 py-1">Delete</button>
                           </td>
                         </tr>
                       ))}
@@ -164,34 +165,34 @@ export function AdminDashboard() {
         {tab === 'notifications' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold text-slate-900">Notification Channels</h2>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Notification Channels</h2>
               <Button onClick={() => setModal({ type: 'create-channel' })}>Add Channel</Button>
             </div>
             {channelsQuery.isLoading ? (
-              <div className="text-slate-500">Loading...</div>
+              <div className="text-slate-500 dark:text-slate-400">Loading...</div>
             ) : !channelsQuery.data?.notification_channels.length ? (
-              <Card className="p-6 sm:p-8 text-center text-slate-500">No channels yet</Card>
+              <Card className="p-6 sm:p-8 text-center text-slate-500 dark:text-slate-400">No channels yet</Card>
             ) : (
               <Card className="overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[500px]">
-                    <thead className="bg-slate-50 border-b border-slate-100">
+                    <thead className="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
                       <tr>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Name</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Type</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">URL</th>
-                        <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wide">Actions</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Name</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Type</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">URL</th>
+                        <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                       {channelsQuery.data.notification_channels.map((ch) => (
-                        <tr key={ch.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900">{ch.name}</td>
+                        <tr key={ch.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                          <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">{ch.name}</td>
                           <td className="px-3 sm:px-4 py-3"><Badge variant="info">{ch.type}</Badge></td>
-                          <td className="px-3 sm:px-4 py-3 text-sm text-slate-500 truncate max-w-[200px]">{ch.config_json.url}</td>
+                          <td className="px-3 sm:px-4 py-3 text-sm text-slate-500 dark:text-slate-400 truncate max-w-[200px]">{ch.config_json.url}</td>
                           <td className="px-3 sm:px-4 py-3 text-right whitespace-nowrap">
-                            <button onClick={() => { setTestingChannelId(ch.id); testChannelMut.mutate(ch.id); }} disabled={testingChannelId === ch.id} className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50 px-1.5 py-1">{testingChannelId === ch.id ? 'Testing...' : 'Test'}</button>
-                            <button onClick={() => setModal({ type: 'edit-channel', channel: ch })} className="text-sm text-slate-600 hover:text-slate-900 px-1.5 py-1">Edit</button>
+                            <button onClick={() => { setTestingChannelId(ch.id); testChannelMut.mutate(ch.id); }} disabled={testingChannelId === ch.id} className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 disabled:opacity-50 px-1.5 py-1">{testingChannelId === ch.id ? 'Testing...' : 'Test'}</button>
+                            <button onClick={() => setModal({ type: 'edit-channel', channel: ch })} className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-1.5 py-1">Edit</button>
                           </td>
                         </tr>
                       ))}
@@ -206,37 +207,37 @@ export function AdminDashboard() {
         {tab === 'incidents' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold text-slate-900">Incidents</h2>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Incidents</h2>
               <Button onClick={() => setModal({ type: 'create-incident' })}>Create Incident</Button>
             </div>
             {incidentsQuery.isLoading ? (
-              <div className="text-slate-500">Loading...</div>
+              <div className="text-slate-500 dark:text-slate-400">Loading...</div>
             ) : !incidentsQuery.data?.incidents.length ? (
-              <Card className="p-6 sm:p-8 text-center text-slate-500">No incidents yet</Card>
+              <Card className="p-6 sm:p-8 text-center text-slate-500 dark:text-slate-400">No incidents yet</Card>
             ) : (
               <Card className="overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[600px]">
-                    <thead className="bg-slate-50 border-b border-slate-100">
+                    <thead className="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
                       <tr>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Title</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Monitors</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Status</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Impact</th>
-                        <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wide">Actions</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Title</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Monitors</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Status</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Impact</th>
+                        <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                       {incidentsQuery.data.incidents.map((it) => (
-                        <tr key={it.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900">{it.title}</td>
-                          <td className="px-3 sm:px-4 py-3 text-sm text-slate-500 truncate max-w-[150px]">{it.monitor_ids.map((id) => monitorNameById.get(id) ?? `#${id}`).join(', ')}</td>
+                        <tr key={it.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                          <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">{it.title}</td>
+                          <td className="px-3 sm:px-4 py-3 text-sm text-slate-500 dark:text-slate-400 truncate max-w-[150px]">{it.monitor_ids.map((id) => monitorNameById.get(id) ?? `#${id}`).join(', ')}</td>
                           <td className="px-3 sm:px-4 py-3"><Badge variant={it.status === 'resolved' ? 'up' : 'paused'}>{it.status}</Badge></td>
                           <td className="px-3 sm:px-4 py-3"><Badge variant={it.impact === 'critical' ? 'down' : it.impact === 'major' ? 'down' : 'paused'}>{it.impact}</Badge></td>
                           <td className="px-3 sm:px-4 py-3 text-right whitespace-nowrap">
-                            <button onClick={() => setModal({ type: 'add-incident-update', incident: it })} disabled={it.status === 'resolved'} className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50 px-1.5 py-1">Update</button>
-                            <button onClick={() => setModal({ type: 'resolve-incident', incident: it })} disabled={it.status === 'resolved'} className="text-sm text-emerald-600 hover:text-emerald-800 disabled:opacity-50 px-1.5 py-1">Resolve</button>
-                            <button onClick={() => confirm(`Delete "${it.title}"?`) && deleteIncidentMut.mutate(it.id)} className="text-sm text-red-500 hover:text-red-700 px-1.5 py-1">Delete</button>
+                            <button onClick={() => setModal({ type: 'add-incident-update', incident: it })} disabled={it.status === 'resolved'} className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 disabled:opacity-50 px-1.5 py-1">Update</button>
+                            <button onClick={() => setModal({ type: 'resolve-incident', incident: it })} disabled={it.status === 'resolved'} className="text-sm text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 disabled:opacity-50 px-1.5 py-1">Resolve</button>
+                            <button onClick={() => confirm(`Delete "${it.title}"?`) && deleteIncidentMut.mutate(it.id)} className="text-sm text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 px-1.5 py-1">Delete</button>
                           </td>
                         </tr>
                       ))}
@@ -251,39 +252,39 @@ export function AdminDashboard() {
         {tab === 'maintenance' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold text-slate-900">Maintenance Windows</h2>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Maintenance Windows</h2>
               <Button onClick={() => setModal({ type: 'create-maintenance' })}>Create Window</Button>
             </div>
             {maintenanceQuery.isLoading ? (
-              <div className="text-slate-500">Loading...</div>
+              <div className="text-slate-500 dark:text-slate-400">Loading...</div>
             ) : !maintenanceQuery.data?.maintenance_windows.length ? (
-              <Card className="p-6 sm:p-8 text-center text-slate-500">No maintenance windows yet</Card>
+              <Card className="p-6 sm:p-8 text-center text-slate-500 dark:text-slate-400">No maintenance windows yet</Card>
             ) : (
               <Card className="overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[650px]">
-                    <thead className="bg-slate-50 border-b border-slate-100">
+                    <thead className="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
                       <tr>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Title</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Monitors</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Schedule</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">State</th>
-                        <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wide">Actions</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Title</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Monitors</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Schedule</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">State</th>
+                        <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                       {maintenanceQuery.data.maintenance_windows.map((w) => {
                         const now = Math.floor(Date.now() / 1000);
                         const state = w.starts_at <= now && w.ends_at > now ? 'Active' : w.starts_at > now ? 'Upcoming' : 'Ended';
                         return (
-                          <tr key={w.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900">{w.title}</td>
-                            <td className="px-3 sm:px-4 py-3 text-sm text-slate-500 truncate max-w-[120px]">{w.monitor_ids.map((id) => monitorNameById.get(id) ?? `#${id}`).join(', ')}</td>
-                            <td className="px-3 sm:px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{new Date(w.starts_at * 1000).toLocaleString()} – {new Date(w.ends_at * 1000).toLocaleString()}</td>
+                          <tr key={w.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                            <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">{w.title}</td>
+                            <td className="px-3 sm:px-4 py-3 text-sm text-slate-500 dark:text-slate-400 truncate max-w-[120px]">{w.monitor_ids.map((id) => monitorNameById.get(id) ?? `#${id}`).join(', ')}</td>
+                            <td className="px-3 sm:px-4 py-3 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">{new Date(w.starts_at * 1000).toLocaleString()} – {new Date(w.ends_at * 1000).toLocaleString()}</td>
                             <td className="px-3 sm:px-4 py-3"><Badge variant={state === 'Active' ? 'maintenance' : state === 'Upcoming' ? 'paused' : 'unknown'}>{state}</Badge></td>
                             <td className="px-3 sm:px-4 py-3 text-right whitespace-nowrap">
-                              <button onClick={() => setModal({ type: 'edit-maintenance', window: w })} className="text-sm text-slate-600 hover:text-slate-900 px-1.5 py-1">Edit</button>
-                              <button onClick={() => confirm(`Delete "${w.title}"?`) && deleteMaintenanceMut.mutate(w.id)} className="text-sm text-red-500 hover:text-red-700 px-1.5 py-1">Delete</button>
+                              <button onClick={() => setModal({ type: 'edit-maintenance', window: w })} className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-1.5 py-1">Edit</button>
+                              <button onClick={() => confirm(`Delete "${w.title}"?`) && deleteMaintenanceMut.mutate(w.id)} className="text-sm text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 px-1.5 py-1">Delete</button>
                             </td>
                           </tr>
                         );
@@ -298,9 +299,9 @@ export function AdminDashboard() {
       </main>
 
       {modal.type !== 'none' && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-soft-lg w-full sm:max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto animate-slide-up">
-            <h2 className="text-lg font-semibold text-slate-900 mb-5">
+        <div className="fixed inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-fade-in">
+          <div className="bg-white dark:bg-slate-800 rounded-t-2xl sm:rounded-2xl shadow-soft-lg w-full sm:max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto animate-slide-up">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-5">
               {modal.type === 'create-monitor' && 'Create Monitor'}
               {modal.type === 'edit-monitor' && 'Edit Monitor'}
               {modal.type === 'create-channel' && 'Create Channel'}
