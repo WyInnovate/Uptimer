@@ -92,6 +92,43 @@ adminRoutes.get('/monitors', async (c) => {
   return c.json({ monitors: rows.map(monitorRowToApi) });
 });
 
+adminRoutes.get('/settings/uptime-rating', async (c) => {
+  const row = await c.env.DB
+    .prepare('SELECT value FROM settings WHERE key = ?1')
+    .bind('uptime_rating_level')
+    .first<{ value: string }>();
+
+  const n = Number.parseInt(row?.value ?? '', 10);
+  const level = Number.isFinite(n) && n >= 1 && n <= 5 ? (n as 1 | 2 | 3 | 4 | 5) : 3;
+
+  return c.json({ uptime_rating_level: level });
+});
+
+adminRoutes.put('/settings/uptime-rating', async (c) => {
+  const rawBody = await c.req.json().catch(() => {
+    throw new AppError(400, 'INVALID_ARGUMENT', 'Invalid JSON body');
+  });
+
+  const input = z
+    .object({ uptime_rating_level: z.number().int().min(1).max(5) })
+    .parse(rawBody);
+
+  await c.env.DB
+    .prepare(
+      `
+      INSERT INTO settings (key, value)
+      VALUES (?1, ?2)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `,
+    )
+    .bind('uptime_rating_level', String(input.uptime_rating_level))
+    .run();
+
+  queuePublicStatusSnapshotRefresh(c);
+
+  return c.json({ uptime_rating_level: input.uptime_rating_level });
+});
+
 adminRoutes.post('/monitors', async (c) => {
   const rawBody = await c.req.json().catch(() => {
     throw new AppError(400, 'INVALID_ARGUMENT', 'Invalid JSON body');

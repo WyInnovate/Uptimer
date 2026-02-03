@@ -53,6 +53,9 @@ export interface UptimeSummary {
   uptime_pct: number;
 }
 
+export type UptimeColorTier = 'emerald' | 'green' | 'lime' | 'yellow' | 'amber' | 'orange' | 'red' | 'rose' | 'slate';
+export type UptimeRatingLevel = 1 | 2 | 3 | 4 | 5;
+
 export interface UptimeDay {
   day_start_at: number;
   total_sec: number;
@@ -66,6 +69,7 @@ export interface PublicMonitor {
   id: number;
   name: string;
   type: MonitorType;
+  uptime_rating_level: UptimeRatingLevel;
   status: MonitorStatus;
   is_stale: boolean;
   last_checked_at: number | null;
@@ -77,6 +81,7 @@ export interface PublicMonitor {
 
 export interface StatusResponse {
   generated_at: number;
+  uptime_rating_level: 1 | 2 | 3 | 4 | 5;
   overall_status: MonitorStatus;
   banner: {
     source: 'incident' | 'maintenance' | 'monitors';

@@ -239,6 +239,23 @@ function utcDayStart(timestampSec: number): number {
 }
 
 
+async function readUptimeRatingLevel(db: D1Database): Promise<1 | 2 | 3 | 4 | 5> {
+  // Stored in D1 settings table. Keep it simple: a single integer (1-5).
+  // Default to Level 3 (Production/SaaS) if not set/invalid.
+  const row = await db
+    .prepare('SELECT value FROM settings WHERE key = ?1')
+    .bind('uptime_rating_level')
+    .first<{ value: string }>();
+
+  const raw = row?.value ?? '';
+  const n = Number.parseInt(raw, 10);
+  if (Number.isFinite(n) && n >= 1 && n <= 5) {
+    return n as 1 | 2 | 3 | 4 | 5;
+  }
+  return 3;
+}
+
+
 async function computeTodayPartialUptime(db: D1Database, monitorId: number, rangeStart: number, now: number): Promise<{ total_sec: number; downtime_sec: number; unknown_sec: number; uptime_sec: number; uptime_pct: number | null }> {
   // Daily rollups only exist for completed UTC days. For the current day, compute
   // uptime from outages in [rangeStart, now) so the status page reflects ongoing downtime.
@@ -349,6 +366,7 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
     : rangeEnd - UPTIME_DAYS * 86400;
   const rawIds = rawMonitors.map((m) => m.id);
   const maintenanceMonitorIds = await listActiveMaintenanceMonitorIds(db, now, rawIds);
+  const uptimeRatingLevel = await readUptimeRatingLevel(db);
 
   const monitorsList: PublicStatusResponse['monitors'] = rawMonitors.map((r) => {
     const isInMaintenance = maintenanceMonitorIds.has(r.id);
@@ -369,6 +387,7 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
       id: r.id,
       name: r.name,
       type: r.type === 'tcp' ? 'tcp' : 'http',
+      uptime_rating_level: uptimeRatingLevel,
       status,
       is_stale: isStale,
       last_checked_at: r.last_checked_at,
@@ -622,6 +641,8 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
 
   return {
     generated_at: now,
+    // Uptime color thresholds are configurable (1-5). Default: Level 3 (Production/SaaS).
+    uptime_rating_level: uptimeRatingLevel,
     overall_status,
     banner,
     summary: counts,

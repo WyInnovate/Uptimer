@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 
-import type { UptimeDay } from '../api/types';
+import type { UptimeDay, UptimeRatingLevel } from '../api/types';
 
 type DowntimeInterval = { start: number; end: number };
 
 interface UptimeBar30dProps {
   days: UptimeDay[];
+  ratingLevel?: UptimeRatingLevel;
   maxBars?: number;
   onDayClick?: (dayStartAt: number) => void;
 }
@@ -25,25 +26,56 @@ function formatSec(totalSeconds: number): string {
   return `${d}d ${h % 24}h`;
 }
 
-function getUptimeColorClasses(uptimePct: number | null): string {
+function getUptimeColorClasses(uptimePct: number | null, level: UptimeRatingLevel): string {
   if (uptimePct === null) return 'bg-slate-300 dark:bg-slate-600';
 
-  // More granularity (green -> red) for per-day uptime bars.
-  // Thresholds are skewed toward high availability.
-  if (uptimePct >= 99.99) return 'bg-emerald-500 dark:bg-emerald-400';
-  if (uptimePct >= 99.95) return 'bg-green-500 dark:bg-green-400';
-  if (uptimePct >= 99.9) return 'bg-lime-500 dark:bg-lime-400';
-  if (uptimePct >= 99.5) return 'bg-yellow-500 dark:bg-yellow-400';
-  if (uptimePct >= 99.0) return 'bg-amber-500 dark:bg-amber-400';
-  if (uptimePct >= 98.0) return 'bg-orange-500 dark:bg-orange-400';
-  if (uptimePct >= 95.0) return 'bg-red-500 dark:bg-red-400';
+  // Five-level uptime rating thresholds (user-defined). Each level maps to 8 color tiers.
+  // Levels are intentionally more lenient for hobby projects and stricter for mission-critical systems.
+  const thresholdsByLevel: Record<UptimeRatingLevel, { emerald: number; green: number; lime: number; yellow: number; amber: number; orange: number; red: number }> = {
+    1: { emerald: 99.0, green: 98.0, lime: 97.0, yellow: 96.0, amber: 95.0, orange: 90.0, red: 80.0 },
+    2: { emerald: 99.9, green: 99.5, lime: 99.0, yellow: 98.5, amber: 98.0, orange: 97.0, red: 95.0 },
+    3: { emerald: 99.99, green: 99.95, lime: 99.9, yellow: 99.5, amber: 99.0, orange: 98.0, red: 97.0 },
+    4: { emerald: 99.999, green: 99.995, lime: 99.99, yellow: 99.95, amber: 99.9, orange: 99.5, red: 99.0 },
+    5: { emerald: 100.0, green: 99.999, lime: 99.995, yellow: 99.99, amber: 99.95, orange: 99.9, red: 99.5 },
+  };
+
+  const t = thresholdsByLevel[level] ?? thresholdsByLevel[3];
+
+  if (uptimePct >= t.emerald) return 'bg-emerald-500 dark:bg-emerald-400';
+  if (uptimePct >= t.green) return 'bg-green-500 dark:bg-green-400';
+  if (uptimePct >= t.lime) return 'bg-lime-500 dark:bg-lime-400';
+  if (uptimePct >= t.yellow) return 'bg-yellow-500 dark:bg-yellow-400';
+  if (uptimePct >= t.amber) return 'bg-amber-500 dark:bg-amber-400';
+  if (uptimePct >= t.orange) return 'bg-orange-500 dark:bg-orange-400';
+  if (uptimePct >= t.red) return 'bg-red-500 dark:bg-red-400';
   return 'bg-rose-600 dark:bg-rose-400';
 }
 
-function getUptimeGlow(uptimePct: number | null): string {
+function getUptimeGlow(uptimePct: number | null, level: UptimeRatingLevel): string {
   if (uptimePct === null) return '';
-  if (uptimePct >= 99.95) return 'shadow-emerald-500/50';
-  if (uptimePct >= 99.0) return 'shadow-amber-500/50';
+
+  // Keep glow coarse: good (>= green), warn (>= amber), bad (< amber).
+  const goodThresholdByLevel: Record<UptimeRatingLevel, number> = {
+    1: 98.0,
+    2: 99.5,
+    3: 99.95,
+    4: 99.995,
+    5: 99.999,
+  };
+
+  const warnThresholdByLevel: Record<UptimeRatingLevel, number> = {
+    1: 95.0,
+    2: 98.0,
+    3: 99.0,
+    4: 99.9,
+    5: 99.95,
+  };
+
+  const good = goodThresholdByLevel[level] ?? goodThresholdByLevel[3];
+  const warn = warnThresholdByLevel[level] ?? warnThresholdByLevel[3];
+
+  if (uptimePct >= good) return 'shadow-emerald-500/50';
+  if (uptimePct >= warn) return 'shadow-amber-500/50';
   return 'shadow-red-500/50';
 }
 
@@ -76,7 +108,7 @@ interface TooltipState {
   position: { x: number; y: number };
 }
 
-function Tooltip({ day, position }: { day: UptimeDay; position: { x: number; y: number } }) {
+function Tooltip({ day, position, ratingLevel }: { day: UptimeDay; position: { x: number; y: number }; ratingLevel: UptimeRatingLevel }) {
   return (
     <div
       className="fixed z-50 px-3 py-2 text-xs bg-slate-900 dark:bg-slate-700 text-white rounded-lg shadow-lg pointer-events-none animate-fade-in"
@@ -88,7 +120,7 @@ function Tooltip({ day, position }: { day: UptimeDay; position: { x: number; y: 
     >
       <div className="font-medium mb-1">{formatDay(day.day_start_at)}</div>
       <div className="flex items-center gap-2">
-        <span className={`w-2 h-2 rounded-full ${getUptimeColorClasses(day.uptime_pct)}`} />
+        <span className={`w-2 h-2 rounded-full ${getUptimeColorClasses(day.uptime_pct, ratingLevel)}`} />
         <span>
           {day.uptime_pct === null ? 'No data' : `${day.uptime_pct.toFixed(3)}%`} uptime
         </span>
@@ -100,7 +132,7 @@ function Tooltip({ day, position }: { day: UptimeDay; position: { x: number; y: 
   );
 }
 
-export function UptimeBar30d({ days, maxBars = 30, onDayClick }: UptimeBar30dProps) {
+export function UptimeBar30d({ days, ratingLevel = 3, maxBars = 30, onDayClick }: UptimeBar30dProps) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
 
   const displayDays = useMemo(() => {
@@ -140,8 +172,8 @@ export function UptimeBar30d({ days, maxBars = 30, onDayClick }: UptimeBar30dPro
               type="button"
               aria-label={`Uptime ${formatDay(d.day_start_at)}`}
               className={`flex-1 min-w-[3px] sm:min-w-[4px] max-w-[6px] sm:max-w-[8px] rounded-sm transition-all duration-150
-                ${getUptimeColorClasses(pct)}
-                hover:scale-y-110 hover:shadow-md ${tooltip?.day.day_start_at === d.day_start_at ? getUptimeGlow(pct) : ''}`}
+                ${getUptimeColorClasses(pct, ratingLevel)}
+                hover:scale-y-110 hover:shadow-md ${tooltip?.day.day_start_at === d.day_start_at ? getUptimeGlow(pct, ratingLevel) : ''}`}
               style={{ height: '100%' }}
               onMouseEnter={(e) => handleMouseEnter(d, e)}
               onMouseLeave={() => setTooltip(null)}
@@ -154,7 +186,7 @@ export function UptimeBar30d({ days, maxBars = 30, onDayClick }: UptimeBar30dPro
         })}
       </div>
 
-      {tooltip && <Tooltip day={tooltip.day} position={tooltip.position} />}
+      {tooltip && <Tooltip day={tooltip.day} position={tooltip.position} ratingLevel={ratingLevel} />}
     </>
   );
 }

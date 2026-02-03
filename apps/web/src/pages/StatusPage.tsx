@@ -58,17 +58,26 @@ function formatPct(v: number): string {
   return `${v.toFixed(3)}%`;
 }
 
-function getUptimeTextColorClasses(uptimePct: number): string {
+function getUptimeTextColorClasses(uptimePct: number, level: 1 | 2 | 3 | 4 | 5): string {
   if (!Number.isFinite(uptimePct)) return 'text-slate-500 dark:text-slate-400';
 
-  // Match the per-day uptime bar tiers (green -> red).
-  if (uptimePct >= 99.99) return 'text-emerald-600 dark:text-emerald-400';
-  if (uptimePct >= 99.95) return 'text-green-600 dark:text-green-400';
-  if (uptimePct >= 99.9) return 'text-lime-600 dark:text-lime-400';
-  if (uptimePct >= 99.5) return 'text-yellow-600 dark:text-yellow-400';
-  if (uptimePct >= 99.0) return 'text-amber-600 dark:text-amber-400';
-  if (uptimePct >= 98.0) return 'text-orange-600 dark:text-orange-400';
-  if (uptimePct >= 95.0) return 'text-red-600 dark:text-red-400';
+  const thresholdsByLevel: Record<1 | 2 | 3 | 4 | 5, { emerald: number; green: number; lime: number; yellow: number; amber: number; orange: number; red: number }> = {
+    1: { emerald: 99.0, green: 98.0, lime: 97.0, yellow: 96.0, amber: 95.0, orange: 90.0, red: 80.0 },
+    2: { emerald: 99.9, green: 99.5, lime: 99.0, yellow: 98.5, amber: 98.0, orange: 97.0, red: 95.0 },
+    3: { emerald: 99.99, green: 99.95, lime: 99.9, yellow: 99.5, amber: 99.0, orange: 98.0, red: 97.0 },
+    4: { emerald: 99.999, green: 99.995, lime: 99.99, yellow: 99.95, amber: 99.9, orange: 99.5, red: 99.0 },
+    5: { emerald: 100.0, green: 99.999, lime: 99.995, yellow: 99.99, amber: 99.95, orange: 99.9, red: 99.5 },
+  };
+
+  const t = thresholdsByLevel[level] ?? thresholdsByLevel[3];
+
+  if (uptimePct >= t.emerald) return 'text-emerald-600 dark:text-emerald-400';
+  if (uptimePct >= t.green) return 'text-green-600 dark:text-green-400';
+  if (uptimePct >= t.lime) return 'text-lime-600 dark:text-lime-400';
+  if (uptimePct >= t.yellow) return 'text-yellow-600 dark:text-yellow-400';
+  if (uptimePct >= t.amber) return 'text-amber-600 dark:text-amber-400';
+  if (uptimePct >= t.orange) return 'text-orange-600 dark:text-orange-400';
+  if (uptimePct >= t.red) return 'text-red-600 dark:text-red-400';
   return 'text-rose-700 dark:text-rose-400';
 }
 
@@ -92,13 +101,18 @@ function MonitorCard({ monitor, onSelect, onDayClick }: { monitor: PublicMonitor
         <Badge variant={getStatusBadgeVariant(monitor.status)}>{monitor.status}</Badge>
       </div>
 
-      <UptimeBar30d days={monitor.uptime_days} maxBars={30} onDayClick={onDayClick} />
+      <UptimeBar30d
+        days={monitor.uptime_days}
+        ratingLevel={monitor.uptime_rating_level}
+        maxBars={30}
+        onDayClick={onDayClick}
+      />
 
       <div className="mt-3 sm:mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
         <div className="flex items-center gap-3 sm:gap-4">
           {uptime30d && (
             <span className="text-slate-600 dark:text-slate-300">
-              <span className={`font-medium ${getUptimeTextColorClasses(uptime30d.uptime_pct)}`}>
+              <span className={`font-medium ${getUptimeTextColorClasses(uptime30d.uptime_pct, monitor.uptime_rating_level)}`}>
                 {formatPct(uptime30d.uptime_pct)}
               </span>{' '}
               uptime (30d)

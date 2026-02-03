@@ -9,6 +9,7 @@ import {
   fetchNotificationChannels, createNotificationChannel, updateNotificationChannel, testNotificationChannel, deleteNotificationChannel,
   fetchAdminIncidents, createIncident, addIncidentUpdate, resolveIncident, deleteIncident,
   fetchMaintenanceWindows, createMaintenanceWindow, updateMaintenanceWindow, deleteMaintenanceWindow,
+  fetchAdminUptimeRating, updateAdminUptimeRating,
 } from '../api/client';
 import type { AdminMonitor, Incident, MaintenanceWindow, NotificationChannel } from '../api/types';
 import { IncidentForm } from '../components/IncidentForm';
@@ -19,7 +20,7 @@ import { NotificationChannelForm } from '../components/NotificationChannelForm';
 import { ResolveIncidentForm } from '../components/ResolveIncidentForm';
 import { Badge, Button, Card, ThemeToggle } from '../components/ui';
 
-type Tab = 'monitors' | 'notifications' | 'incidents' | 'maintenance';
+type Tab = 'monitors' | 'notifications' | 'incidents' | 'maintenance' | 'settings';
 type ModalState =
   | { type: 'none' }
   | { type: 'create-monitor' }
@@ -36,6 +37,7 @@ const tabs: { key: Tab; label: string; icon: string }[] = [
   { key: 'monitors', label: 'Monitors', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
   { key: 'notifications', label: 'Notifications', icon: 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9' },
   { key: 'incidents', label: 'Incidents', icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z' },
+  { key: 'settings', label: 'Settings', icon: 'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100 4m0-4a2 2 0 110 4m0-4v-2m0 6v2m6-10a2 2 0 100 4m0-4a2 2 0 110 4m0-4V4m0 6v2M6 10h12M6 18h12' },
   { key: 'maintenance', label: 'Maintenance', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
 ];
 
@@ -59,7 +61,21 @@ export function AdminDashboard() {
   const incidentsQuery = useQuery({ queryKey: ['admin-incidents'], queryFn: () => fetchAdminIncidents() });
   const maintenanceQuery = useQuery({ queryKey: ['admin-maintenance-windows'], queryFn: () => fetchMaintenanceWindows() });
 
-  const invalidate = (key: string) => queryClient.invalidateQueries({ queryKey: [key] });
+  const uptimeRatingQuery = useQuery({
+    queryKey: ['admin-settings', 'uptime-rating'],
+    queryFn: fetchAdminUptimeRating,
+  });
+
+  const updateUptimeRatingMut = useMutation({
+    mutationFn: (level: 1 | 2 | 3 | 4 | 5) => updateAdminUptimeRating(level),
+    onSuccess: () => {
+      invalidate('admin-settings');
+      // Refresh public status so clients pick up the new level quickly.
+      invalidate(['status']);
+    },
+  });
+  const invalidate = (queryKey: string | unknown[]) =>
+    queryClient.invalidateQueries({ queryKey: Array.isArray(queryKey) ? queryKey : [queryKey] });
   const closeModal = () => setModal({ type: 'none' });
 
   const createMonitorMut = useMutation({ mutationFn: createMonitor, onSuccess: () => { invalidate('admin-monitors'); closeModal(); } });
@@ -217,6 +233,42 @@ export function AdminDashboard() {
                 </div>
               </Card>
             )}
+          </div>
+        )}
+
+        {tab === 'settings' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Settings</h2>
+            </div>
+
+            <Card className="p-4 sm:p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">Uptime Color Rating</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Controls the color thresholds for daily bars and 30d uptime.
+                  </div>
+                </div>
+
+                <select
+                  value={uptimeRatingQuery.data?.uptime_rating_level ?? 3}
+                  onChange={(e) => updateUptimeRatingMut.mutate(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)}
+                  disabled={uptimeRatingQuery.isLoading || updateUptimeRatingMut.isPending}
+                  className="border dark:border-slate-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 disabled:opacity-50"
+                >
+                  <option value={1}>Level 1 - Personal / Hobby</option>
+                  <option value={2}>Level 2 - Basic Business / Content</option>
+                  <option value={3}>Level 3 - Production / SaaS</option>
+                  <option value={4}>Level 4 - High Availability / Critical</option>
+                  <option value={5}>Level 5 - Financial / Mission Critical</option>
+                </select>
+              </div>
+
+              {uptimeRatingQuery.isError && (
+                <div className="mt-3 text-sm text-red-600 dark:text-red-400">Failed to load uptime rating</div>
+              )}
+            </Card>
           </div>
         )}
 

@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 const monitorStatusSchema = z.enum(['up', 'down', 'maintenance', 'paused', 'unknown']);
 
+const uptimeRatingLevelSchema = z.number().int().min(1).max(5);
+
 const incidentStatusSchema = z.enum(['investigating', 'identified', 'monitoring', 'resolved']);
 const incidentImpactSchema = z.enum(['none', 'minor', 'major', 'critical']);
 
@@ -58,6 +60,7 @@ const publicMonitorSchema = z.object({
   id: z.number().int().positive(),
   name: z.string(),
   type: z.enum(['http', 'tcp']),
+  uptime_rating_level: uptimeRatingLevelSchema,
   status: monitorStatusSchema,
   is_stale: z.boolean(),
   last_checked_at: z.number().int().nonnegative().nullable(),
@@ -107,6 +110,7 @@ const bannerSchema = z.discriminatedUnion('source', [
 
 export const publicStatusResponseSchema = z.object({
   generated_at: z.number().int().nonnegative(),
+  uptime_rating_level: uptimeRatingLevelSchema,
   overall_status: monitorStatusSchema,
   banner: bannerSchema,
   summary: z.object({
