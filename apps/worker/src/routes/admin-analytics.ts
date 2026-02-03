@@ -14,7 +14,6 @@ import {
   overlapSeconds,
   rangeToSeconds,
   sumIntervals,
-  utcDayStart,
   type Interval,
   type UptimeRange,
 } from '../analytics/uptime';
@@ -70,7 +69,8 @@ function computeRange(range: UptimeRange): { start: number; end: number } {
     return { start: end - rangeToSeconds(range), end };
   }
 
-  const end = utcDayStart(now);
+  // Include the current (partial) UTC day so ongoing downtime is reflected in 7d/30d/90d views.
+  const end = Math.floor(now / 60) * 60;
   return { start: end - rangeToSeconds(range), end };
 }
 

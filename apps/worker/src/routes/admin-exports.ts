@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 
-import { rangeToSeconds, utcDayStart, type UptimeRange } from '../analytics/uptime';
+import { rangeToSeconds, type UptimeRange } from '../analytics/uptime';
 import type { Env } from '../env';
 import { AppError } from '../middleware/errors';
 
@@ -18,7 +18,8 @@ function computeRange(range: UptimeRange): { start: number; end: number } {
     return { start: end - rangeToSeconds(range), end };
   }
 
-  const end = utcDayStart(now);
+  // Include the current (partial) UTC day so exports match on-screen analytics.
+  const end = Math.floor(now / 60) * 60;
   return { start: end - rangeToSeconds(range), end };
 }
 

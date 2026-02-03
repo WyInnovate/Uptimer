@@ -162,13 +162,15 @@ export function UptimeBar30d({ days, maxBars = 30, onDayClick }: UptimeBar30dPro
 export function computeDayDowntimeIntervals(
   dayStartAt: number,
   outages: Array<{ started_at: number; ended_at: number | null }>,
+  nowSec: number = Math.floor(Date.now() / 1000),
 ): DowntimeInterval[] {
   const dayEndAt = dayStartAt + 86400;
+  const capEndAt = dayStartAt <= nowSec && nowSec < dayEndAt ? nowSec : dayEndAt;
 
   const intervals: DowntimeInterval[] = [];
   for (const o of outages) {
     const s = Math.max(o.started_at, dayStartAt);
-    const e = Math.min(o.ended_at ?? dayEndAt, dayEndAt);
+    const e = Math.min(o.ended_at ?? capEndAt, capEndAt);
     if (e > s) intervals.push({ start: s, end: e });
   }
 

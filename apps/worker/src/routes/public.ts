@@ -584,11 +584,73 @@ publicRoutes.get('/monitors/:id/uptime', async (c) => {
   });
 });
 
+async function computePartialUptimeTotals(
+  db: D1Database,
+  monitorId: number,
+  rangeStart: number,
+  rangeEnd: number,
+): Promise<{ total_sec: number; downtime_sec: number; unknown_sec: number; uptime_sec: number }> {
+  const total_sec = Math.max(0, rangeEnd - rangeStart);
+  if (total_sec === 0) {
+    return { total_sec: 0, downtime_sec: 0, unknown_sec: 0, uptime_sec: 0 };
+  }
+
+  const { results } = await db
+    .prepare(
+      `
+      SELECT started_at, ended_at
+      FROM outages
+      WHERE monitor_id = ?1
+        AND started_at < ?2
+        AND (ended_at IS NULL OR ended_at > ?3)
+      ORDER BY started_at
+    `,
+    )
+    .bind(monitorId, rangeEnd, rangeStart)
+    .all<{ started_at: number; ended_at: number | null }>();
+
+  let downtime_sec = 0;
+  let curStart: number | null = null;
+  let curEnd: number | null = null;
+
+  for (const r of results ?? []) {
+    const s = Math.max(r.started_at, rangeStart);
+    const e = Math.min(r.ended_at ?? rangeEnd, rangeEnd);
+    if (e <= s) continue;
+
+    if (curStart === null || curEnd === null) {
+      curStart = s;
+      curEnd = e;
+      continue;
+    }
+
+    if (s <= curEnd) {
+      curEnd = Math.max(curEnd, e);
+      continue;
+    }
+
+    downtime_sec += Math.max(0, curEnd - curStart);
+    curStart = s;
+    curEnd = e;
+  }
+
+  if (curStart !== null && curEnd !== null) {
+    downtime_sec += Math.max(0, curEnd - curStart);
+  }
+
+  const unknown_sec = 0;
+  const uptime_sec = Math.max(0, total_sec - Math.min(total_sec, downtime_sec + unknown_sec));
+
+  return { total_sec, downtime_sec, unknown_sec, uptime_sec };
+}
+
 publicRoutes.get('/analytics/uptime', async (c) => {
   const range = uptimeOverviewRangeSchema.optional().default('30d').parse(c.req.query('range'));
 
   const now = Math.floor(Date.now() / 1000);
-  const rangeEnd = Math.floor(now / 86400) * 86400; // full days only (UTC)
+  // Include the current (partial) day so overview matches other uptime calculations.
+  const rangeEnd = Math.floor(now / 60) * 60;
+  const rangeEndFullDays = Math.floor(rangeEnd / 86400) * 86400;
   const rangeStart = rangeEnd - (range === '30d' ? 30 * 86400 : 90 * 86400);
 
   const { results: monitorRows } = await c.env.DB.prepare(
@@ -615,7 +677,7 @@ publicRoutes.get('/analytics/uptime', async (c) => {
       GROUP BY monitor_id
     `
   )
-    .bind(rangeStart, rangeEnd)
+    .bind(rangeStart, rangeEndFullDays)
     .all<{
       monitor_id: number;
       total_sec: number;
@@ -642,24 +704,45 @@ publicRoutes.get('/analytics/uptime', async (c) => {
   let unknown_sec = 0;
   let uptime_sec = 0;
 
-  const out = monitors.map((m) => {
-    const totals = byMonitorId.get(m.id) ?? { total_sec: 0, downtime_sec: 0, unknown_sec: 0, uptime_sec: 0 };
-    total_sec += totals.total_sec;
-    downtime_sec += totals.downtime_sec;
-    unknown_sec += totals.unknown_sec;
-    uptime_sec += totals.uptime_sec;
-    const uptime_pct = totals.total_sec === 0 ? 0 : (totals.uptime_sec / totals.total_sec) * 100;
-    return {
-      id: m.id,
-      name: m.name,
-      type: m.type,
-      total_sec: totals.total_sec,
-      downtime_sec: totals.downtime_sec,
-      unknown_sec: totals.unknown_sec,
-      uptime_sec: totals.uptime_sec,
-      uptime_pct,
-    };
-  });
+  const partialStart = rangeEndFullDays;
+  const partialEnd = rangeEnd;
+
+  const out = await Promise.all(
+    monitors.map(async (m) => {
+      const rollupTotals =
+        byMonitorId.get(m.id) ?? { total_sec: 0, downtime_sec: 0, unknown_sec: 0, uptime_sec: 0 };
+
+      const partialTotals =
+        partialEnd > partialStart
+          ? await computePartialUptimeTotals(c.env.DB, m.id, partialStart, partialEnd)
+          : { total_sec: 0, downtime_sec: 0, unknown_sec: 0, uptime_sec: 0 };
+
+      const totals = {
+        total_sec: rollupTotals.total_sec + partialTotals.total_sec,
+        downtime_sec: rollupTotals.downtime_sec + partialTotals.downtime_sec,
+        unknown_sec: rollupTotals.unknown_sec + partialTotals.unknown_sec,
+        uptime_sec: rollupTotals.uptime_sec + partialTotals.uptime_sec,
+      };
+
+      total_sec += totals.total_sec;
+      downtime_sec += totals.downtime_sec;
+      unknown_sec += totals.unknown_sec;
+      uptime_sec += totals.uptime_sec;
+
+      const uptime_pct = totals.total_sec === 0 ? 0 : (totals.uptime_sec / totals.total_sec) * 100;
+
+      return {
+        id: m.id,
+        name: m.name,
+        type: m.type,
+        total_sec: totals.total_sec,
+        downtime_sec: totals.downtime_sec,
+        unknown_sec: totals.unknown_sec,
+        uptime_sec: totals.uptime_sec,
+        uptime_pct,
+      };
+    }),
+  );
 
   const overall_uptime_pct = total_sec === 0 ? 0 : (uptime_sec / total_sec) * 100;
 
@@ -688,7 +771,8 @@ publicRoutes.get('/monitors/:id/outages', async (c) => {
   }
 
   const now = Math.floor(Date.now() / 1000);
-  const rangeEnd = Math.floor(now / 86400) * 86400; // full days only (UTC)
+  // Include the current (partial) day so outages from today show up on the status page.
+  const rangeEnd = Math.floor(now / 60) * 60;
   const rangeStart = Math.max(rangeEnd - 30 * 86400, monitor.created_at);
 
   const sqlBase = `
