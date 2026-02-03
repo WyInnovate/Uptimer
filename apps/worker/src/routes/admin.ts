@@ -856,25 +856,31 @@ adminRoutes.post('/incidents', async (c) => {
     await c.env.DB.batch(linkStatements);
   }
 
-  const channels = await listActiveWebhookChannels(c.env.DB);
-  if (channels.length > 0) {
-    const eventKey = `incident:${row.id}:created:${startedAt}`;
-    const payload = {
-      event: 'incident.created',
-      event_id: eventKey,
-      timestamp: now,
-      incident: incidentRowToApi(row, [], monitorIds),
-    };
+  c.executionCtx.waitUntil(
+    (async () => {
+      const channels = await listActiveWebhookChannels(c.env.DB);
+      if (channels.length === 0) return;
 
-    await dispatchWebhookToChannels({
-      db: c.env.DB,
-      env: c.env as unknown as Record<string, unknown>,
-      channels,
-      eventType: payload.event,
-      eventKey,
-      payload,
-    });
-  }
+      const eventKey = `incident:${row.id}:created:${startedAt}`;
+      const payload = {
+        event: 'incident.created',
+        event_id: eventKey,
+        timestamp: now,
+        incident: incidentRowToApi(row, [], monitorIds),
+      };
+
+      await dispatchWebhookToChannels({
+        db: c.env.DB,
+        env: c.env as unknown as Record<string, unknown>,
+        channels,
+        eventType: payload.event,
+        eventKey,
+        payload,
+      });
+    })().catch((err) => {
+      console.error('notify: failed to dispatch incident.created', err);
+    }),
+  );
 
   queuePublicStatusSnapshotRefresh(c);
 
@@ -950,26 +956,32 @@ adminRoutes.post('/incidents/:id/updates', async (c) => {
     throw new AppError(500, 'INTERNAL', 'Incident missing after update');
   }
 
-  const channels = await listActiveWebhookChannels(c.env.DB);
-  if (channels.length > 0) {
-    const eventKey = `incident:${id}:update:${updateRow.id}`;
-    const payload = {
-      event: 'incident.updated',
-      event_id: eventKey,
-      timestamp: now,
-      incident: incidentRowToApi(incidentRow, [], monitorIds),
-      update: incidentUpdateRowToApi(updateRow),
-    };
+  c.executionCtx.waitUntil(
+    (async () => {
+      const channels = await listActiveWebhookChannels(c.env.DB);
+      if (channels.length === 0) return;
 
-    await dispatchWebhookToChannels({
-      db: c.env.DB,
-      env: c.env as unknown as Record<string, unknown>,
-      channels,
-      eventType: payload.event,
-      eventKey,
-      payload,
-    });
-  }
+      const eventKey = `incident:${id}:update:${updateRow.id}`;
+      const payload = {
+        event: 'incident.updated',
+        event_id: eventKey,
+        timestamp: now,
+        incident: incidentRowToApi(incidentRow, [], monitorIds),
+        update: incidentUpdateRowToApi(updateRow),
+      };
+
+      await dispatchWebhookToChannels({
+        db: c.env.DB,
+        env: c.env as unknown as Record<string, unknown>,
+        channels,
+        eventType: payload.event,
+        eventKey,
+        payload,
+      });
+    })().catch((err) => {
+      console.error('notify: failed to dispatch incident.updated', err);
+    }),
+  );
 
   queuePublicStatusSnapshotRefresh(c);
 
@@ -1050,26 +1062,32 @@ adminRoutes.patch('/incidents/:id/resolve', async (c) => {
     throw new AppError(500, 'INTERNAL', 'Incident missing after resolve');
   }
 
-  const channels = await listActiveWebhookChannels(c.env.DB);
-  if (channels.length > 0) {
-    const eventKey = `incident:${id}:resolved:${updateRow.id}`;
-    const payload = {
-      event: 'incident.resolved',
-      event_id: eventKey,
-      timestamp: now,
-      incident: incidentRowToApi(incidentRow, [], monitorIds),
-      update: incidentUpdateRowToApi(updateRow),
-    };
+  c.executionCtx.waitUntil(
+    (async () => {
+      const channels = await listActiveWebhookChannels(c.env.DB);
+      if (channels.length === 0) return;
 
-    await dispatchWebhookToChannels({
-      db: c.env.DB,
-      env: c.env as unknown as Record<string, unknown>,
-      channels,
-      eventType: payload.event,
-      eventKey,
-      payload,
-    });
-  }
+      const eventKey = `incident:${id}:resolved:${updateRow.id}`;
+      const payload = {
+        event: 'incident.resolved',
+        event_id: eventKey,
+        timestamp: now,
+        incident: incidentRowToApi(incidentRow, [], monitorIds),
+        update: incidentUpdateRowToApi(updateRow),
+      };
+
+      await dispatchWebhookToChannels({
+        db: c.env.DB,
+        env: c.env as unknown as Record<string, unknown>,
+        channels,
+        eventType: payload.event,
+        eventKey,
+        payload,
+      });
+    })().catch((err) => {
+      console.error('notify: failed to dispatch incident.resolved', err);
+    }),
+  );
 
   queuePublicStatusSnapshotRefresh(c);
 

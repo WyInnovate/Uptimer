@@ -256,70 +256,91 @@ async function readUptimeRatingLevel(db: D1Database): Promise<1 | 2 | 3 | 4 | 5>
 }
 
 
-async function computeTodayPartialUptime(db: D1Database, monitorId: number, rangeStart: number, now: number): Promise<{ total_sec: number; downtime_sec: number; unknown_sec: number; uptime_sec: number; uptime_pct: number | null }> {
-  // Daily rollups only exist for completed UTC days. For the current day, compute
-  // uptime from outages in [rangeStart, now) so the status page reflects ongoing downtime.
+
+
+async function computeTodayPartialUptimeBatch(
+  db: D1Database,
+  monitorIds: number[],
+  rangeStart: number,
+  now: number,
+): Promise<
+  Map<number, { total_sec: number; downtime_sec: number; unknown_sec: number; uptime_sec: number; uptime_pct: number | null }>
+> {
+  const out = new Map<
+    number,
+    { total_sec: number; downtime_sec: number; unknown_sec: number; uptime_sec: number; uptime_pct: number | null }
+  >();
+
+  const ids = [...new Set(monitorIds)].filter((id) => Number.isFinite(id));
+  if (ids.length === 0) return out;
+
   if (now <= rangeStart) {
-    return {
-      total_sec: 0,
-      downtime_sec: 0,
-      unknown_sec: 0,
-      uptime_sec: 0,
-      uptime_pct: null as number | null,
-    };
+    for (const id of ids) {
+      out.set(id, { total_sec: 0, downtime_sec: 0, unknown_sec: 0, uptime_sec: 0, uptime_pct: null });
+    }
+    return out;
   }
 
   const total_sec = Math.max(0, now - rangeStart);
 
+  const placeholders = ids.map((_, idx) => `?${idx + 3}`).join(', ');
   const { results } = await db
     .prepare(
       `
-      SELECT started_at, ended_at
+      SELECT monitor_id, started_at, ended_at
       FROM outages
-      WHERE monitor_id = ?1
-        AND started_at < ?2
-        AND (ended_at IS NULL OR ended_at > ?3)
-      ORDER BY started_at
+      WHERE monitor_id IN (${placeholders})
+        AND started_at < ?1
+        AND (ended_at IS NULL OR ended_at > ?2)
+      ORDER BY monitor_id, started_at
     `,
     )
-    .bind(monitorId, now, rangeStart)
-    .all<{ started_at: number; ended_at: number | null }>();
+    .bind(now, rangeStart, ...ids)
+    .all<{ monitor_id: number; started_at: number; ended_at: number | null }>();
 
-  // Merge outage intervals in UTC seconds.
-  const intervals: Array<{ start: number; end: number }> = [];
+  const byId = new Map<number, Array<{ start: number; end: number }>>();
   for (const r of results ?? []) {
     const start = Math.max(r.started_at, rangeStart);
     const end = Math.min(r.ended_at ?? now, now);
-    if (end > start) intervals.push({ start, end });
+    if (end <= start) continue;
+    const list = byId.get(r.monitor_id) ?? [];
+    list.push({ start, end });
+    byId.set(r.monitor_id, list);
   }
 
-  intervals.sort((a, b) => a.start - b.start);
-  let downtime_sec = 0;
-  let cur: { start: number; end: number } | null = null;
-  for (const it of intervals) {
-    if (!cur) {
+  for (const id of ids) {
+    const intervals = byId.get(id) ?? [];
+    intervals.sort((a, b) => a.start - b.start);
+
+    let downtime_sec = 0;
+    let cur: { start: number; end: number } | null = null;
+    for (const it of intervals) {
+      if (!cur) {
+        cur = { start: it.start, end: it.end };
+        continue;
+      }
+      if (it.start <= cur.end) {
+        cur.end = Math.max(cur.end, it.end);
+        continue;
+      }
+      downtime_sec += Math.max(0, cur.end - cur.start);
       cur = { start: it.start, end: it.end };
-      continue;
     }
-    if (it.start <= cur.end) {
-      cur.end = Math.max(cur.end, it.end);
-      continue;
-    }
-    downtime_sec += Math.max(0, cur.end - cur.start);
-    cur = { start: it.start, end: it.end };
+    if (cur) downtime_sec += Math.max(0, cur.end - cur.start);
+
+    const uptime_sec = Math.max(0, total_sec - downtime_sec);
+    const uptime_pct = total_sec === 0 ? null : (uptime_sec / total_sec) * 100;
+
+    out.set(id, {
+      total_sec,
+      downtime_sec,
+      unknown_sec: 0,
+      uptime_sec,
+      uptime_pct,
+    });
   }
-  if (cur) downtime_sec += Math.max(0, cur.end - cur.start);
 
-  const uptime_sec = Math.max(0, total_sec - downtime_sec);
-  const uptime_pct = total_sec === 0 ? null : (uptime_sec / total_sec) * 100;
-
-  return {
-    total_sec,
-    downtime_sec,
-    unknown_sec: 0,
-    uptime_sec,
-    uptime_pct,
-  };
+  return out;
 }
 
 function toUptimePct(totalSec: number, uptimeSec: number): number | null {
@@ -423,6 +444,12 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
       byMonitorId.set(r.monitor_id, existing);
     }
 
+    const todayStartAt = utcDayStart(now);
+    const needsToday = rangeEnd > rangeEndFullDays && todayStartAt >= rangeStart;
+    const todayByMonitorId = needsToday
+      ? await computeTodayPartialUptimeBatch(db, ids, Math.max(todayStartAt, rangeStart), rangeEnd)
+      : new Map();
+
     for (const m of monitorsList) {
       const rows = byMonitorId.get(m.id) ?? [];
 
@@ -436,18 +463,18 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
       }));
 
       // Add a synthetic point for the current UTC day so ongoing outages are reflected.
-      const todayStartAt = utcDayStart(now);
-      if (rangeEnd > rangeEndFullDays && todayStartAt >= rangeStart) {
-        const dayRangeStart = Math.max(todayStartAt, rangeStart);
-        const today = await computeTodayPartialUptime(db, m.id, dayRangeStart, rangeEnd);
-        daily.push({
-          day_start_at: todayStartAt,
-          total_sec: today.total_sec,
-          downtime_sec: today.downtime_sec,
-          unknown_sec: today.unknown_sec,
-          uptime_sec: today.uptime_sec,
-          uptime_pct: today.uptime_pct,
-        });
+      if (needsToday) {
+        const today = todayByMonitorId.get(m.id);
+        if (today) {
+          daily.push({
+            day_start_at: todayStartAt,
+            total_sec: today.total_sec,
+            downtime_sec: today.downtime_sec,
+            unknown_sec: today.unknown_sec,
+            uptime_sec: today.uptime_sec,
+            uptime_pct: today.uptime_pct,
+          });
+        }
       }
 
       let total_sec = 0;

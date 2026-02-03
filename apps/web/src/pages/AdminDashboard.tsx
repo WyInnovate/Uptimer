@@ -11,7 +11,7 @@ import {
   fetchMaintenanceWindows, createMaintenanceWindow, updateMaintenanceWindow, deleteMaintenanceWindow,
   fetchAdminUptimeRating, updateAdminUptimeRating,
 } from '../api/client';
-import type { AdminMonitor, Incident, MaintenanceWindow, NotificationChannel } from '../api/types';
+import type { AdminMonitor, Incident, MaintenanceWindow, NotificationChannel, StatusResponse } from '../api/types';
 import { IncidentForm } from '../components/IncidentForm';
 import { IncidentUpdateForm } from '../components/IncidentUpdateForm';
 import { MaintenanceWindowForm } from '../components/MaintenanceWindowForm';
@@ -51,8 +51,6 @@ function formatError(err: unknown): string | undefined {
 export function AdminDashboard() {
   const { logout } = useAuth();
   const queryClient = useQueryClient();
-  const invalidate = (queryKey: string | unknown[]) =>
-    queryClient.invalidateQueries({ queryKey: Array.isArray(queryKey) ? queryKey : [queryKey] });
   const [tab, setTab] = useState<Tab>('monitors');
   const [modal, setModal] = useState<ModalState>({ type: 'none' });
   const [testingMonitorId, setTestingMonitorId] = useState<number | null>(null);
@@ -70,33 +68,196 @@ export function AdminDashboard() {
 
   const updateUptimeRatingMut = useMutation({
     mutationFn: (level: 1 | 2 | 3 | 4 | 5) => updateAdminUptimeRating(level),
-    onSuccess: () => {
-      invalidate('admin-settings');
-      // Refresh public status so clients pick up the new level quickly.
-      invalidate('status');
+    onMutate: async (level) => {
+      await queryClient.cancelQueries({ queryKey: ['admin-settings', 'uptime-rating'] });
+
+      const prevRating = queryClient.getQueryData<{ uptime_rating_level: 1 | 2 | 3 | 4 | 5 }>([
+        'admin-settings',
+        'uptime-rating',
+      ]);
+
+      const prevStatus = queryClient.getQueryData<StatusResponse>(['status']);
+
+      // Optimistically update the setting so the select reflects the user's choice immediately
+      // (important on high-latency networks).
+      queryClient.setQueryData<{ uptime_rating_level: 1 | 2 | 3 | 4 | 5 }>(
+        ['admin-settings', 'uptime-rating'],
+        { uptime_rating_level: level },
+      );
+
+      // Also update the cached public status payload so the status page can pick up the new
+      // rating level without waiting for a full refetch.
+      queryClient.setQueryData<StatusResponse>(['status'], (old) =>
+        old
+          ? {
+              ...old,
+              uptime_rating_level: level,
+              monitors: old.monitors.map((m) => ({ ...m, uptime_rating_level: level })),
+            }
+          : old,
+      );
+
+      return { prevRating, prevStatus };
+    },
+    onError: (_err, _level, ctx) => {
+      const prevRating = (
+        ctx as
+          | { prevRating?: { uptime_rating_level: 1 | 2 | 3 | 4 | 5 }; prevStatus?: StatusResponse }
+          | undefined
+      )?.prevRating;
+      const prevStatus = (
+        ctx as
+          | { prevRating?: { uptime_rating_level: 1 | 2 | 3 | 4 | 5 }; prevStatus?: StatusResponse }
+          | undefined
+      )?.prevStatus;
+
+      if (prevRating) {
+        queryClient.setQueryData(['admin-settings', 'uptime-rating'], prevRating);
+      }
+      if (prevStatus) {
+        queryClient.setQueryData(['status'], prevStatus);
+      }
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['admin-settings', 'uptime-rating'], data);
+
+      const level = data.uptime_rating_level;
+      queryClient.setQueryData<StatusResponse>(['status'], (old) =>
+        old
+          ? {
+              ...old,
+              uptime_rating_level: level,
+              monitors: old.monitors.map((m) => ({ ...m, uptime_rating_level: level })),
+            }
+          : old,
+      );
     },
   });
   const closeModal = () => setModal({ type: 'none' });
 
-  const createMonitorMut = useMutation({ mutationFn: createMonitor, onSuccess: () => { invalidate('admin-monitors'); closeModal(); } });
-  const updateMonitorMut = useMutation({ mutationFn: ({ id, data }: { id: number; data: Parameters<typeof updateMonitor>[1] }) => updateMonitor(id, data), onSuccess: () => { invalidate('admin-monitors'); closeModal(); } });
-  const deleteMonitorMut = useMutation({ mutationFn: deleteMonitor, onSuccess: () => invalidate('admin-monitors') });
+  const createMonitorMut = useMutation({
+    mutationFn: createMonitor,
+    onSuccess: (data) => {
+      queryClient.setQueryData(['admin-monitors'], (old: { monitors: AdminMonitor[] } | undefined) => ({
+        monitors: [...(old?.monitors ?? []), data.monitor].sort((a, b) => a.id - b.id),
+      }));
+      closeModal();
+    },
+  });
+  const updateMonitorMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof updateMonitor>[1] }) => updateMonitor(id, data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['admin-monitors'], (old: { monitors: AdminMonitor[] } | undefined) => ({
+        monitors: (old?.monitors ?? []).map((m) => (m.id === data.monitor.id ? data.monitor : m)),
+      }));
+      closeModal();
+    },
+  });
+  const deleteMonitorMut = useMutation({
+    mutationFn: deleteMonitor,
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData(['admin-monitors'], (old: { monitors: AdminMonitor[] } | undefined) => ({
+        monitors: (old?.monitors ?? []).filter((m) => m.id !== id),
+      }));
+    },
+  });
   const testMonitorMut = useMutation({ mutationFn: testMonitor, onSettled: () => setTestingMonitorId(null) });
 
-  const createChannelMut = useMutation({ mutationFn: createNotificationChannel, onSuccess: () => { invalidate('admin-channels'); closeModal(); } });
-  const updateChannelMut = useMutation({ mutationFn: ({ id, data }: { id: number; data: Parameters<typeof updateNotificationChannel>[1] }) => updateNotificationChannel(id, data), onSuccess: () => { invalidate('admin-channels'); closeModal(); } });
+  const createChannelMut = useMutation({
+    mutationFn: createNotificationChannel,
+    onSuccess: (data) => {
+      queryClient.setQueryData(['admin-channels'], (old: { notification_channels: NotificationChannel[] } | undefined) => ({
+        notification_channels: [...(old?.notification_channels ?? []), data.notification_channel].sort((a, b) => a.id - b.id),
+      }));
+      closeModal();
+    },
+  });
+  const updateChannelMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof updateNotificationChannel>[1] }) => updateNotificationChannel(id, data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['admin-channels'], (old: { notification_channels: NotificationChannel[] } | undefined) => ({
+        notification_channels: (old?.notification_channels ?? []).map((ch) =>
+          ch.id === data.notification_channel.id ? data.notification_channel : ch,
+        ),
+      }));
+      closeModal();
+    },
+  });
   const testChannelMut = useMutation({ mutationFn: testNotificationChannel, onSettled: () => setTestingChannelId(null) });
 
-  const deleteChannelMut = useMutation({ mutationFn: deleteNotificationChannel, onSuccess: () => invalidate('admin-channels') });
+  const deleteChannelMut = useMutation({
+    mutationFn: deleteNotificationChannel,
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData(['admin-channels'], (old: { notification_channels: NotificationChannel[] } | undefined) => ({
+        notification_channels: (old?.notification_channels ?? []).filter((ch) => ch.id !== id),
+      }));
+    },
+  });
 
-  const createIncidentMut = useMutation({ mutationFn: createIncident, onSuccess: () => { invalidate('admin-incidents'); closeModal(); } });
-  const addIncidentUpdateMut = useMutation({ mutationFn: ({ id, data }: { id: number; data: Parameters<typeof addIncidentUpdate>[1] }) => addIncidentUpdate(id, data), onSuccess: () => { invalidate('admin-incidents'); closeModal(); } });
-  const resolveIncidentMut = useMutation({ mutationFn: ({ id, data }: { id: number; data: Parameters<typeof resolveIncident>[1] }) => resolveIncident(id, data), onSuccess: () => { invalidate('admin-incidents'); closeModal(); } });
-  const deleteIncidentMut = useMutation({ mutationFn: deleteIncident, onSuccess: () => invalidate('admin-incidents') });
+  const createIncidentMut = useMutation({
+    mutationFn: createIncident,
+    onSuccess: (data) => {
+      queryClient.setQueryData(['admin-incidents'], (old: { incidents: Incident[] } | undefined) => ({
+        incidents: [data.incident, ...(old?.incidents ?? [])],
+      }));
+      closeModal();
+    },
+  });
+  const addIncidentUpdateMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof addIncidentUpdate>[1] }) => addIncidentUpdate(id, data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['admin-incidents'], (old: { incidents: Incident[] } | undefined) => ({
+        incidents: (old?.incidents ?? []).map((it) => (it.id === data.incident.id ? data.incident : it)),
+      }));
+      closeModal();
+    },
+  });
+  const resolveIncidentMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof resolveIncident>[1] }) => resolveIncident(id, data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['admin-incidents'], (old: { incidents: Incident[] } | undefined) => ({
+        incidents: (old?.incidents ?? []).map((it) => (it.id === data.incident.id ? data.incident : it)),
+      }));
+      closeModal();
+    },
+  });
+  const deleteIncidentMut = useMutation({
+    mutationFn: deleteIncident,
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData(['admin-incidents'], (old: { incidents: Incident[] } | undefined) => ({
+        incidents: (old?.incidents ?? []).filter((it) => it.id !== id),
+      }));
+    },
+  });
 
-  const createMaintenanceMut = useMutation({ mutationFn: createMaintenanceWindow, onSuccess: () => { invalidate('admin-maintenance-windows'); closeModal(); } });
-  const updateMaintenanceMut = useMutation({ mutationFn: ({ id, data }: { id: number; data: Parameters<typeof updateMaintenanceWindow>[1] }) => updateMaintenanceWindow(id, data), onSuccess: () => { invalidate('admin-maintenance-windows'); closeModal(); } });
-  const deleteMaintenanceMut = useMutation({ mutationFn: deleteMaintenanceWindow, onSuccess: () => invalidate('admin-maintenance-windows') });
+  const createMaintenanceMut = useMutation({
+    mutationFn: createMaintenanceWindow,
+    onSuccess: (data) => {
+      queryClient.setQueryData(['admin-maintenance-windows'], (old: { maintenance_windows: MaintenanceWindow[] } | undefined) => ({
+        maintenance_windows: [data.maintenance_window, ...(old?.maintenance_windows ?? [])],
+      }));
+      closeModal();
+    },
+  });
+  const updateMaintenanceMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof updateMaintenanceWindow>[1] }) => updateMaintenanceWindow(id, data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['admin-maintenance-windows'], (old: { maintenance_windows: MaintenanceWindow[] } | undefined) => ({
+        maintenance_windows: (old?.maintenance_windows ?? []).map((w) =>
+          w.id === data.maintenance_window.id ? data.maintenance_window : w,
+        ),
+      }));
+      closeModal();
+    },
+  });
+  const deleteMaintenanceMut = useMutation({
+    mutationFn: deleteMaintenanceWindow,
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData(['admin-maintenance-windows'], (old: { maintenance_windows: MaintenanceWindow[] } | undefined) => ({
+        maintenance_windows: (old?.maintenance_windows ?? []).filter((w) => w.id !== id),
+      }));
+    },
+  });
 
   const monitorNameById = new Map((monitorsQuery.data?.monitors ?? []).map((m) => [m.id, m.name] as const));
 
@@ -253,7 +414,12 @@ export function AdminDashboard() {
 
                 <select
                   value={uptimeRatingQuery.data?.uptime_rating_level ?? 3}
-                  onChange={(e) => updateUptimeRatingMut.mutate(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)}
+                  onChange={(e) => {
+                    const next = Number(e.target.value) as 1 | 2 | 3 | 4 | 5;
+                    const cur = uptimeRatingQuery.data?.uptime_rating_level ?? 3;
+                    if (next === cur) return;
+                    updateUptimeRatingMut.mutate(next);
+                  }}
                   disabled={uptimeRatingQuery.isLoading || updateUptimeRatingMut.isPending}
                   className="border dark:border-slate-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 disabled:opacity-50"
                 >
@@ -267,6 +433,12 @@ export function AdminDashboard() {
 
               {uptimeRatingQuery.isError && (
                 <div className="mt-3 text-sm text-red-600 dark:text-red-400">Failed to load uptime rating</div>
+              )}
+
+              {updateUptimeRatingMut.isError && (
+                <div className="mt-3 text-sm text-red-600 dark:text-red-400">
+                  {formatError(updateUptimeRatingMut.error) ?? 'Failed to update uptime rating'}
+                </div>
               )}
             </Card>
           </div>

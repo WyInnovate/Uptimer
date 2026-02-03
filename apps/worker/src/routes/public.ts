@@ -5,9 +5,56 @@ import { getDb, monitors } from '@uptimer/db';
 
 import type { Env } from '../env';
 import { computePublicStatusPayload } from '../public/status';
-import { applyStatusCacheHeaders, readStatusSnapshot, writeStatusSnapshot } from '../snapshots';
+import { applyStatusCacheHeaders, readStatusSnapshot, toSnapshotPayload, writeStatusSnapshot } from '../snapshots';
+
 import { AppError } from '../middleware/errors';
 import { cachePublic } from '../middleware/cache-public';
+
+type PublicStatusSnapshotRow = {
+  generated_at: number;
+  body_json: string;
+};
+
+function safeJsonParse(text: string): unknown | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+async function readStaleStatusSnapshot(
+  db: D1Database,
+  now: number,
+  maxStaleSeconds: number,
+): Promise<{ data: unknown; age: number } | null> {
+  try {
+    const row = await db
+      .prepare(
+        `
+        SELECT generated_at, body_json
+        FROM public_snapshots
+        WHERE key = 'status'
+      `,
+      )
+      .first<PublicStatusSnapshotRow>();
+
+    if (!row) return null;
+
+    const age = Math.max(0, now - row.generated_at);
+    if (age > maxStaleSeconds) return null;
+
+    const parsed = safeJsonParse(row.body_json);
+    if (parsed === null) return null;
+
+    return { data: parsed, age };
+  } catch {
+    return null;
+  }
+}
+
 
 export const publicRoutes = new Hono<{ Bindings: Env }>();
 
@@ -335,18 +382,32 @@ publicRoutes.get('/status', async (c) => {
 
     return res;
   }
+  try {
+    const payload = await computePublicStatusPayload(c.env.DB, now);
+    const res = c.json(payload);
+    applyStatusCacheHeaders(res, 0);
 
-  const payload = await computePublicStatusPayload(c.env.DB, now);
-  const res = c.json(payload);
-  applyStatusCacheHeaders(res, 0);
+    c.executionCtx.waitUntil(
+      writeStatusSnapshot(c.env.DB, now, payload).catch((err) => {
+        console.warn('public snapshot: write failed', err);
+      }),
+    );
 
-  c.executionCtx.waitUntil(
-    writeStatusSnapshot(c.env.DB, now, payload).catch((err) => {
-      console.warn('public snapshot: write failed', err);
-    }),
-  );
+    return res;
+  } catch (err) {
+    console.warn('public status: compute failed', err);
 
-  return res;
+    // Last-resort fallback for weak networks / D1 hiccups: serve a stale snapshot (bounded)
+    // instead of failing the entire status page.
+    const stale = await readStaleStatusSnapshot(c.env.DB, now, 10 * 60);
+    if (stale) {
+      const res = c.json(toSnapshotPayload(stale.data));
+      applyStatusCacheHeaders(res, Math.min(60, stale.age));
+      return res;
+    }
+
+    throw err;
+  }
 });
 
 publicRoutes.get('/incidents', async (c) => {

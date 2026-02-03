@@ -14,14 +14,53 @@ declare global {
   var __UPTIMER_INITIAL_STATUS__: StatusResponse | undefined;
 }
 
+
+const LS_PUBLIC_STATUS_KEY = 'uptimer_public_status_snapshot_v1';
+
+type PersistedStatusCache = {
+  at: number;
+  value: StatusResponse;
+};
+
+function readPersistedStatusCache(): StatusResponse | null {
+  try {
+    const raw = localStorage.getItem(LS_PUBLIC_STATUS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return null;
+
+    const value = (parsed as { value?: unknown }).value;
+    if (!value || typeof value !== 'object') return null;
+
+    // Minimal shape check.
+    if (typeof (value as { generated_at?: unknown }).generated_at !== 'number') return null;
+
+    return value as StatusResponse;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedStatusCache(value: StatusResponse): void {
+  try {
+    const payload: PersistedStatusCache = { at: Date.now(), value };
+    localStorage.setItem(LS_PUBLIC_STATUS_KEY, JSON.stringify(payload));
+  } catch {
+    // Best-effort only.
+  }
+}
+
 const initialStatus = globalThis.__UPTIMER_INITIAL_STATUS__;
-if (initialStatus) {
+const persistedStatus = initialStatus ? null : readPersistedStatusCache();
+const seedStatus = initialStatus ?? persistedStatus;
+
+if (seedStatus) {
   // Seed React Query so the status page can render instantly on slow networks.
   // Use the server-provided timestamp so we don't hide stale data.
-  const updatedAt =
-    typeof initialStatus.generated_at === 'number' ? initialStatus.generated_at * 1000 : Date.now();
+  const updatedAt = typeof seedStatus.generated_at === 'number' ? seedStatus.generated_at * 1000 : Date.now();
 
-  queryClient.setQueryData<StatusResponse>(['status'], initialStatus, { updatedAt });
+  queryClient.setQueryData<StatusResponse>(['status'], seedStatus, { updatedAt });
+  writePersistedStatusCache(seedStatus);
 }
 
 function PreloadCleanup() {

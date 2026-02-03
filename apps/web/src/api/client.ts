@@ -36,6 +36,13 @@ const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api/
 const PUBLIC_CACHE_TTL_MS = 30_000;
 const publicCache = new Map<string, { at: number; value: unknown }>();
 
+const LS_PUBLIC_STATUS_KEY = 'uptimer_public_status_snapshot_v1';
+
+type PersistedStatusCache = {
+  at: number;
+  value: StatusResponse;
+};
+
 function getCachedPublic<T>(key: string): T | null {
   const hit = publicCache.get(key);
   if (!hit) return null;
@@ -45,6 +52,35 @@ function getCachedPublic<T>(key: string): T | null {
 
 function setCachedPublic(key: string, value: unknown) {
   publicCache.set(key, { at: Date.now(), value });
+}
+
+function readPersistedStatusCache(maxAgeMs: number): StatusResponse | null {
+  try {
+    const raw = localStorage.getItem(LS_PUBLIC_STATUS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return null;
+
+    const at = (parsed as { at?: unknown }).at;
+    const value = (parsed as { value?: unknown }).value;
+    if (typeof at !== 'number' || !Number.isFinite(at)) return null;
+    if (Date.now() - at > maxAgeMs) return null;
+
+    // Minimal shape check; full schema validation lives on the worker.
+    if (!value || typeof value !== 'object') return null;
+    return value as StatusResponse;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedStatusCache(value: StatusResponse): void {
+  try {
+    const payload: PersistedStatusCache = { at: Date.now(), value };
+    localStorage.setItem(LS_PUBLIC_STATUS_KEY, JSON.stringify(payload));
+  } catch {
+    // Best-effort only.
+  }
 }
 
 class ApiError extends Error {
@@ -108,14 +144,21 @@ export async function fetchStatus(): Promise<StatusResponse> {
   const url = `${API_BASE}/public/status`;
   const cached = getCachedPublic<StatusResponse>(url);
   if (cached) return cached;
+
   try {
     const res = await fetch(url);
     const data = await handleResponse<StatusResponse>(res);
     setCachedPublic(url, data);
+    writePersistedStatusCache(data);
     return data;
   } catch (err) {
+    // Prefer returning a cached snapshot over a hard error on weak networks.
+    const persisted = readPersistedStatusCache(10 * 60_000);
+    if (persisted) return persisted;
+
     const stale = getCachedPublic<StatusResponse>(url);
     if (stale) return stale;
+
     throw err;
   }
 }
