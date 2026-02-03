@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import {
   LATENCY_BUCKETS_MS,
+  buildLatencyHistogram,
   mergeLatencyHistograms,
   percentileFromHistogram,
   percentileFromValues,
@@ -11,6 +12,7 @@ import {
 import {
   buildUnknownIntervals,
   mergeIntervals,
+  utcDayStart,
   overlapSeconds,
   rangeToSeconds,
   sumIntervals,
@@ -63,15 +65,17 @@ function toCheckStatus(value: string | null): 'up' | 'down' | 'maintenance' | 'u
 
 function computeRange(range: UptimeRange): { start: number; end: number } {
   const now = Math.floor(Date.now() / 1000);
+  const end = Math.floor(now / 60) * 60;
 
   if (range === '24h') {
-    const end = Math.floor(now / 60) * 60;
     return { start: end - rangeToSeconds(range), end };
   }
 
-  // Include the current (partial) UTC day so ongoing downtime is reflected in 7d/30d/90d views.
-  const end = Math.floor(now / 60) * 60;
-  return { start: end - rangeToSeconds(range), end };
+  // For day-based ranges (7d/30d/90d), align to UTC day boundaries and include today's partial day.
+  const days = Math.max(1, Math.round(rangeToSeconds(range) / 86400));
+  const todayStartAt = utcDayStart(end);
+  const start = todayStartAt - (days - 1) * 86400;
+  return { start, end };
 }
 
 function parseHistogram(value: string | null): number[] | null {
@@ -160,7 +164,6 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
       }
     }
   }
-
   const uptime_sec = Math.max(0, total_sec - downtime_sec);
   const uptime_pct = total_sec === 0 ? 0 : (uptime_sec / total_sec) * 100;
 
@@ -205,6 +208,140 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
     outages: { longest_sec: longest_outage_sec, mttr_sec },
   });
 });
+
+async function computePartialDayRow(
+  db: D1Database,
+  monitor: { id: number; interval_sec: number },
+  start: number,
+  end: number,
+): Promise<{
+  day_start_at: number;
+  total_sec: number;
+  downtime_sec: number;
+  unknown_sec: number;
+  uptime_sec: number;
+  uptime_pct: number;
+  avg_latency_ms: number | null;
+  p50_latency_ms: number | null;
+  p95_latency_ms: number | null;
+  checks_total: number;
+  checks_up: number;
+  checks_down: number;
+  checks_unknown: number;
+  checks_maintenance: number;
+  latency_histogram_json: string | null;
+}> {
+  const total_sec = Math.max(0, end - start);
+  if (total_sec === 0) {
+    return {
+      day_start_at: utcDayStart(end),
+      total_sec: 0,
+      downtime_sec: 0,
+      unknown_sec: 0,
+      uptime_sec: 0,
+      uptime_pct: 0,
+      avg_latency_ms: null,
+      p50_latency_ms: null,
+      p95_latency_ms: null,
+      checks_total: 0,
+      checks_up: 0,
+      checks_down: 0,
+      checks_unknown: 0,
+      checks_maintenance: 0,
+      latency_histogram_json: null,
+    };
+  }
+
+  const { results: outageRows } = await db
+    .prepare(
+      `
+        SELECT started_at, ended_at
+        FROM outages
+        WHERE monitor_id = ?1
+          AND started_at < ?2
+          AND (ended_at IS NULL OR ended_at > ?3)
+        ORDER BY started_at
+      `,
+    )
+    .bind(monitor.id, end, start)
+    .all<{ started_at: number; ended_at: number | null }>();
+
+  const downtimeIntervals = mergeIntervals(
+    (outageRows ?? [])
+      .map((r) => ({ start: Math.max(r.started_at, start), end: Math.min(r.ended_at ?? end, end) }))
+      .filter((it) => it.end > it.start),
+  );
+  const downtime_sec = sumIntervals(downtimeIntervals);
+
+  const checksStart = start - monitor.interval_sec * 2;
+  const { results: checkRows } = await db
+    .prepare(
+      `
+        SELECT checked_at, status, latency_ms
+        FROM check_results
+        WHERE monitor_id = ?1
+          AND checked_at >= ?2
+          AND checked_at < ?3
+        ORDER BY checked_at
+      `,
+    )
+    .bind(monitor.id, checksStart, end)
+    .all<CheckRow>();
+
+  const normalizedChecks = (checkRows ?? []).map((r) => ({ checked_at: r.checked_at, status: toCheckStatus(r.status) }));
+  const unknownIntervals = buildUnknownIntervals(start, end, monitor.interval_sec, normalizedChecks);
+  const unknown_sec = Math.max(0, sumIntervals(unknownIntervals) - overlapSeconds(unknownIntervals, downtimeIntervals));
+
+  const unavailable_sec = Math.min(total_sec, downtime_sec + unknown_sec);
+  const uptime_sec = Math.max(0, total_sec - unavailable_sec);
+  const uptime_pct = total_sec === 0 ? 0 : (uptime_sec / total_sec) * 100;
+
+  let checks_up = 0;
+  let checks_down = 0;
+  let checks_unknown = 0;
+  let checks_maintenance = 0;
+  const latencies: number[] = [];
+
+  for (const r of checkRows ?? []) {
+    if (r.checked_at < start) continue;
+    const st = toCheckStatus(r.status);
+    if (st === 'up') {
+      checks_up++;
+      if (typeof r.latency_ms === 'number' && Number.isFinite(r.latency_ms)) latencies.push(r.latency_ms);
+    } else if (st === 'down') {
+      checks_down++;
+    } else if (st === 'maintenance') {
+      checks_maintenance++;
+    } else {
+      checks_unknown++;
+    }
+  }
+
+  const checks_total = checks_up + checks_down + checks_unknown + checks_maintenance;
+
+  const avg_latency_ms = avg(latencies);
+  const p50_latency_ms = percentileFromValues(latencies, 0.5);
+  const p95_latency_ms = percentileFromValues(latencies, 0.95);
+  const latency_histogram_json = JSON.stringify(buildLatencyHistogram(latencies));
+
+  return {
+    day_start_at: utcDayStart(end),
+    total_sec,
+    downtime_sec,
+    unknown_sec,
+    uptime_sec,
+    uptime_pct,
+    avg_latency_ms,
+    p50_latency_ms,
+    p95_latency_ms,
+    checks_total,
+    checks_up,
+    checks_down,
+    checks_unknown,
+    checks_maintenance,
+    latency_histogram_json,
+  };
+}
 
 adminAnalyticsRoutes.get('/monitors/:id', async (c) => {
   const id = z.coerce.number().int().positive().parse(c.req.param('id'));
@@ -340,8 +477,9 @@ adminAnalyticsRoutes.get('/monitors/:id', async (c) => {
   }
 
   // day-based rollup ranges: 7d/30d/90d.
+  // We keep rollups for full UTC days, and add a synthetic point for the current (partial) day.
+  const daysEnd = utcDayStart(rangeEnd);
   const daysStart = rangeStartBase;
-  const daysEnd = rangeEnd;
   const dayCount = Math.max(0, Math.round((daysEnd - daysStart) / 86400));
 
   const { results: rollupRows } = await c.env.DB.prepare(
@@ -478,6 +616,53 @@ adminAnalyticsRoutes.get('/monitors/:id', async (c) => {
     });
   }
 
+  // Add the current (partial) UTC day point so ongoing outages show up for 7d/30d/90d.
+  if (rangeEnd > daysEnd && rangeEnd > rangeStart) {
+    const start = Math.max(daysEnd, rangeStart);
+    const partial = await computePartialDayRow(
+      c.env.DB,
+      { id: monitor.id, interval_sec: monitor.interval_sec },
+      start,
+      rangeEnd,
+    );
+
+    total_sec += partial.total_sec;
+    downtime_sec += partial.downtime_sec;
+    unknown_sec += partial.unknown_sec;
+    uptime_sec += partial.uptime_sec;
+
+    checks_total += partial.checks_total;
+    checks_up += partial.checks_up;
+    checks_down += partial.checks_down;
+    checks_unknown += partial.checks_unknown;
+    checks_maintenance += partial.checks_maintenance;
+
+    if (typeof partial.avg_latency_ms === 'number' && partial.checks_up > 0) {
+      latencyWeightedSum += partial.avg_latency_ms * partial.checks_up;
+      latencySamples += partial.checks_up;
+    }
+
+    const h = parseHistogram(partial.latency_histogram_json);
+    if (h) histograms.push(h);
+
+    daily.push({
+      day_start_at: partial.day_start_at,
+      total_sec: partial.total_sec,
+      downtime_sec: partial.downtime_sec,
+      unknown_sec: partial.unknown_sec,
+      uptime_sec: partial.uptime_sec,
+      uptime_pct: partial.uptime_pct,
+      avg_latency_ms: partial.avg_latency_ms,
+      p50_latency_ms: partial.p50_latency_ms,
+      p95_latency_ms: partial.p95_latency_ms,
+      checks_total: partial.checks_total,
+      checks_up: partial.checks_up,
+      checks_down: partial.checks_down,
+      checks_unknown: partial.checks_unknown,
+      checks_maintenance: partial.checks_maintenance,
+    });
+  }
+
   const uptime_pct = total_sec === 0 ? 0 : (uptime_sec / total_sec) * 100;
   const unknown_pct = total_sec === 0 ? 0 : (unknown_sec / total_sec) * 100;
 
@@ -491,7 +676,7 @@ adminAnalyticsRoutes.get('/monitors/:id', async (c) => {
     monitor: { id: monitor.id, name: monitor.name, type: monitor.type },
     range,
     range_start_at: rangeStart,
-    range_end_at: daysEnd,
+    range_end_at: rangeEnd,
     total_sec,
     downtime_sec,
     unknown_sec,
