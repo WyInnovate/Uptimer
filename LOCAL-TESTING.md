@@ -477,6 +477,18 @@ pnpm format
 
 ---
 
+### Public Status (30-day uptime bars)
+
+The public status page now uses the daily rollup table (`monitor_daily_rollups`) to render a 30-day uptime bar per monitor.
+
+To generate rollup data locally (yesterday's rollup):
+
+```bash
+curl "http://localhost:8787/__scheduled?cron=0+0+*+*+*"
+```
+
+The UI will show up to 30 bars when data exists. If there is no rollup data yet, uptime fields may be empty.
+
 ## 常见问题
 
 ### Q: Worker 启动失败，提示数据库不存在
