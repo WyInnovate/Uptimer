@@ -176,6 +176,20 @@ export async function fetchPublicUptimeOverview(
   }
 }
 
+export async function fetchPublicMonitorOutages(
+  monitorId: number,
+  opts: { range?: '30d'; limit?: number; cursor?: number } = {},
+): Promise<MonitorOutagesResponse> {
+  const qs = new URLSearchParams();
+  qs.set('range', opts.range ?? '30d');
+  qs.set('limit', String(opts.limit ?? 200));
+  if (opts.cursor !== undefined) qs.set('cursor', String(opts.cursor));
+
+  const url = `${API_BASE}/public/monitors/${monitorId}/outages?${qs.toString()}`;
+  const res = await fetch(url);
+  return handleResponse<MonitorOutagesResponse>(res);
+}
+
 export { ApiError };
 
 // Admin API - Monitors
@@ -273,10 +287,7 @@ export async function deleteNotificationChannel(id: number): Promise<{ deleted: 
 }
 
 // Public API - Incidents
-export async function fetchPublicIncidents(
-  limit = 20,
-  cursor?: number,
-): Promise<PublicIncidentsResponse> {
+export async function fetchPublicIncidents(limit = 20, cursor?: number): Promise<PublicIncidentsResponse> {
   const qs = new URLSearchParams({ limit: String(limit) });
   if (cursor) qs.set('cursor', String(cursor));
   const res = await fetch(`${API_BASE}/public/incidents?${qs.toString()}`);
@@ -289,44 +300,6 @@ export async function fetchAdminIncidents(limit = 50): Promise<AdminIncidentsRes
     headers: getAuthHeaders(),
   });
   return handleResponse<AdminIncidentsResponse>(res);
-}
-
-// Admin API - Analytics
-export async function fetchAdminAnalyticsOverview(
-  range: AnalyticsOverviewRange = '24h',
-): Promise<AnalyticsOverviewResponse> {
-  const res = await fetch(`${API_BASE}/admin/analytics/overview?range=${range}`, {
-    headers: getAuthHeaders(),
-  });
-  return handleResponse<AnalyticsOverviewResponse>(res);
-}
-
-export async function fetchAdminMonitorAnalytics(
-  monitorId: number,
-  range: AnalyticsRange = '24h',
-): Promise<MonitorAnalyticsResponse> {
-  const res = await fetch(`${API_BASE}/admin/analytics/monitors/${monitorId}?range=${range}`, {
-    headers: getAuthHeaders(),
-  });
-  return handleResponse<MonitorAnalyticsResponse>(res);
-}
-
-export async function fetchAdminMonitorOutages(
-  monitorId: number,
-  opts: { range?: AnalyticsRange; limit?: number; cursor?: number } = {},
-): Promise<MonitorOutagesResponse> {
-  const qs = new URLSearchParams();
-  qs.set('range', opts.range ?? '7d');
-  qs.set('limit', String(opts.limit ?? 50));
-  if (opts.cursor !== undefined) qs.set('cursor', String(opts.cursor));
-
-  const res = await fetch(
-    `${API_BASE}/admin/analytics/monitors/${monitorId}/outages?${qs.toString()}`,
-    {
-      headers: getAuthHeaders(),
-    },
-  );
-  return handleResponse<MonitorOutagesResponse>(res);
 }
 
 export async function createIncident(input: CreateIncidentInput): Promise<{ incident: Incident }> {
@@ -371,9 +344,7 @@ export async function deleteIncident(id: number): Promise<{ deleted: boolean }> 
 }
 
 // Admin API - Maintenance Windows
-export async function fetchMaintenanceWindows(
-  limit = 50,
-): Promise<{ maintenance_windows: MaintenanceWindow[] }> {
+export async function fetchMaintenanceWindows(limit = 50): Promise<{ maintenance_windows: MaintenanceWindow[] }> {
   const res = await fetch(`${API_BASE}/admin/maintenance-windows?limit=${limit}`, {
     headers: getAuthHeaders(),
   });
@@ -409,4 +380,39 @@ export async function deleteMaintenanceWindow(id: number): Promise<{ deleted: bo
     headers: getAuthHeaders(),
   });
   return handleResponse<{ deleted: boolean }>(res);
+}
+
+// Admin API - Analytics
+export async function fetchAdminAnalyticsOverview(
+  range: AnalyticsOverviewRange = '24h',
+): Promise<AnalyticsOverviewResponse> {
+  const res = await fetch(`${API_BASE}/admin/analytics/overview?range=${range}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<AnalyticsOverviewResponse>(res);
+}
+
+export async function fetchAdminMonitorAnalytics(
+  monitorId: number,
+  range: AnalyticsRange = '24h',
+): Promise<MonitorAnalyticsResponse> {
+  const res = await fetch(`${API_BASE}/admin/analytics/monitors/${monitorId}?range=${range}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<MonitorAnalyticsResponse>(res);
+}
+
+export async function fetchAdminMonitorOutages(
+  monitorId: number,
+  opts: { range?: AnalyticsRange; limit?: number; cursor?: number } = {},
+): Promise<MonitorOutagesResponse> {
+  const qs = new URLSearchParams();
+  qs.set('range', opts.range ?? '7d');
+  qs.set('limit', String(opts.limit ?? 50));
+  if (opts.cursor !== undefined) qs.set('cursor', String(opts.cursor));
+
+  const res = await fetch(`${API_BASE}/admin/analytics/monitors/${monitorId}/outages?${qs.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<MonitorOutagesResponse>(res);
 }

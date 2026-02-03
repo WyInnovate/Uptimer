@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 const monitorStatusSchema = z.enum(['up', 'down', 'maintenance', 'paused', 'unknown']);
-const checkStatusSchema = z.enum(['up', 'down', 'maintenance', 'unknown']);
 
 const incidentStatusSchema = z.enum(['investigating', 'identified', 'monitoring', 'resolved']);
 const incidentImpactSchema = z.enum(['none', 'minor', 'major', 'critical']);
@@ -36,10 +35,23 @@ const maintenanceWindowSchema = z.object({
   monitor_ids: z.array(z.number().int().positive()),
 });
 
-const heartbeatSchema = z.object({
-  checked_at: z.number().int().nonnegative(),
-  status: checkStatusSchema,
-  latency_ms: z.number().int().nonnegative().nullable(),
+const uptimeSummarySchema = z.object({
+  range_start_at: z.number().int().nonnegative(),
+  range_end_at: z.number().int().nonnegative(),
+  total_sec: z.number().int().nonnegative(),
+  downtime_sec: z.number().int().nonnegative(),
+  unknown_sec: z.number().int().nonnegative(),
+  uptime_sec: z.number().int().nonnegative(),
+  uptime_pct: z.number().min(0).max(100),
+});
+
+const uptimeDaySchema = z.object({
+  day_start_at: z.number().int().nonnegative(),
+  total_sec: z.number().int().nonnegative(),
+  downtime_sec: z.number().int().nonnegative(),
+  unknown_sec: z.number().int().nonnegative(),
+  uptime_sec: z.number().int().nonnegative(),
+  uptime_pct: z.number().min(0).max(100).nullable(),
 });
 
 const publicMonitorSchema = z.object({
@@ -50,7 +62,12 @@ const publicMonitorSchema = z.object({
   is_stale: z.boolean(),
   last_checked_at: z.number().int().nonnegative().nullable(),
   last_latency_ms: z.number().int().nonnegative().nullable(),
-  heartbeats: z.array(heartbeatSchema),
+
+  // 30-day availability computed from daily rollups (UTC full days).
+  uptime_30d: uptimeSummarySchema.nullable(),
+
+  // 30 daily points (oldest -> newest). Each entry is the day's total uptime.
+  uptime_days: z.array(uptimeDaySchema),
 });
 
 const bannerSchema = z.discriminatedUnion('source', [

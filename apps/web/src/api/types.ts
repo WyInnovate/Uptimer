@@ -43,6 +43,25 @@ export interface Heartbeat {
   latency_ms: number | null;
 }
 
+export interface UptimeSummary {
+  range_start_at: number;
+  range_end_at: number;
+  total_sec: number;
+  downtime_sec: number;
+  unknown_sec: number;
+  uptime_sec: number;
+  uptime_pct: number;
+}
+
+export interface UptimeDay {
+  day_start_at: number;
+  total_sec: number;
+  downtime_sec: number;
+  unknown_sec: number;
+  uptime_sec: number;
+  uptime_pct: number | null;
+}
+
 export interface PublicMonitor {
   id: number;
   name: string;
@@ -51,7 +70,9 @@ export interface PublicMonitor {
   is_stale: boolean;
   last_checked_at: number | null;
   last_latency_ms: number | null;
-  heartbeats: Heartbeat[];
+
+  uptime_30d: UptimeSummary | null;
+  uptime_days: UptimeDay[];
 }
 
 export interface StatusResponse {
@@ -184,7 +205,13 @@ export interface PublicUptimeOverviewResponse {
   range: '30d' | '90d';
   range_start_at: number;
   range_end_at: number;
-  overall: { total_sec: number; downtime_sec: number; unknown_sec: number; uptime_sec: number; uptime_pct: number };
+  overall: {
+    total_sec: number;
+    downtime_sec: number;
+    unknown_sec: number;
+    uptime_sec: number;
+    uptime_pct: number;
+  };
   monitors: Array<{
     id: number;
     name: string;

@@ -10,13 +10,6 @@ type PublicStatusMonitorRow = {
   last_latency_ms: number | null;
 };
 
-type PublicHeartbeatRow = {
-  monitor_id: number;
-  checked_at: number;
-  status: string;
-  latency_ms: number | null;
-};
-
 type IncidentRow = {
   id: number;
   title: string;
@@ -54,20 +47,26 @@ type MaintenanceWindowMonitorLinkRow = {
   monitor_id: number;
 };
 
+type DailyRollupRow = {
+  monitor_id: number;
+  day_start_at: number;
+  total_sec: number;
+  downtime_sec: number;
+  unknown_sec: number;
+  uptime_sec: number;
+};
+
 type BannerStatus = PublicStatusResponse['banner']['status'];
 
 type Banner = PublicStatusResponse['banner'];
 
 type MonitorStatus = PublicStatusResponse['overall_status'];
 
-type CheckStatus = PublicStatusResponse['monitors'][number]['heartbeats'][number]['status'];
-
-const HEARTBEAT_LIMIT = 60;
-const HEARTBEAT_LOOKBACK_SEC = 7 * 24 * 60 * 60;
-
 const STATUS_ACTIVE_INCIDENT_LIMIT = 5;
 const STATUS_ACTIVE_MAINTENANCE_LIMIT = 3;
 const STATUS_UPCOMING_MAINTENANCE_LIMIT = 5;
+
+const UPTIME_DAYS = 30;
 
 function toMonitorStatus(value: string | null): MonitorStatus {
   switch (value) {
@@ -75,18 +74,6 @@ function toMonitorStatus(value: string | null): MonitorStatus {
     case 'down':
     case 'maintenance':
     case 'paused':
-    case 'unknown':
-      return value;
-    default:
-      return 'unknown';
-  }
-}
-
-function toCheckStatus(value: string | null): CheckStatus {
-  switch (value) {
-    case 'up':
-    case 'down':
-    case 'maintenance':
     case 'unknown':
       return value;
     default:
@@ -229,11 +216,7 @@ async function listMaintenanceWindowMonitorIdsByWindowId(
   return byWindow;
 }
 
-async function listActiveMaintenanceMonitorIds(
-  db: D1Database,
-  at: number,
-  monitorIds: number[],
-): Promise<Set<number>> {
+async function listActiveMaintenanceMonitorIds(db: D1Database, at: number, monitorIds: number[]): Promise<Set<number>> {
   const ids = [...new Set(monitorIds)];
   if (ids.length === 0) return new Set();
 
@@ -250,9 +233,22 @@ async function listActiveMaintenanceMonitorIds(
   return new Set((results ?? []).map((r) => r.monitor_id));
 }
 
+function utcDayStart(timestampSec: number): number {
+  return Math.floor(timestampSec / 86400) * 86400;
+}
+
+function toUptimePct(totalSec: number, uptimeSec: number): number | null {
+  if (!Number.isFinite(totalSec) || totalSec <= 0) return null;
+  if (!Number.isFinite(uptimeSec)) return null;
+  const pct = (uptimeSec / totalSec) * 100;
+  if (!Number.isFinite(pct)) return null;
+  return Math.max(0, Math.min(100, pct));
+}
+
 export async function computePublicStatusPayload(db: D1Database, now: number): Promise<PublicStatusResponse> {
-  const rangeEnd = Math.floor(now / 60) * 60;
-  const lookbackStart = rangeEnd - HEARTBEAT_LOOKBACK_SEC;
+  // 30d is computed from daily rollups and only includes full UTC days.
+  const rangeEnd = utcDayStart(now);
+  const rangeStart = rangeEnd - UPTIME_DAYS * 86400;
 
   const { results } = await db
     .prepare(
@@ -295,14 +291,78 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
     return {
       id: r.id,
       name: r.name,
-      type: (r.type === 'tcp' ? 'tcp' : 'http'),
+      type: r.type === 'tcp' ? 'tcp' : 'http',
       status,
       is_stale: isStale,
       last_checked_at: r.last_checked_at,
       last_latency_ms: isStale ? null : r.last_latency_ms,
-      heartbeats: [],
+
+      uptime_30d: null,
+      uptime_days: [],
     };
   });
+
+  const ids = monitorsList.map((m) => m.id);
+  if (ids.length > 0) {
+    const placeholders = ids.map((_, idx) => `?${idx + 1}`).join(', ');
+
+    const { results: rollupRows } = await db
+      .prepare(
+        `
+        SELECT monitor_id, day_start_at, total_sec, downtime_sec, unknown_sec, uptime_sec
+        FROM monitor_daily_rollups
+        WHERE monitor_id IN (${placeholders})
+          AND day_start_at >= ?${ids.length + 1}
+          AND day_start_at < ?${ids.length + 2}
+        ORDER BY monitor_id, day_start_at
+      `,
+      )
+      .bind(...ids, rangeStart, rangeEnd)
+      .all<DailyRollupRow>();
+
+    const byMonitorId = new Map<number, DailyRollupRow[]>();
+    for (const r of rollupRows ?? []) {
+      const existing = byMonitorId.get(r.monitor_id) ?? [];
+      existing.push(r);
+      byMonitorId.set(r.monitor_id, existing);
+    }
+
+    for (const m of monitorsList) {
+      const rows = byMonitorId.get(m.id) ?? [];
+
+      const daily = rows.map((r) => ({
+        day_start_at: r.day_start_at,
+        total_sec: r.total_sec ?? 0,
+        downtime_sec: r.downtime_sec ?? 0,
+        unknown_sec: r.unknown_sec ?? 0,
+        uptime_sec: r.uptime_sec ?? 0,
+        uptime_pct: toUptimePct(r.total_sec ?? 0, r.uptime_sec ?? 0),
+      }));
+
+      let total_sec = 0;
+      let downtime_sec = 0;
+      let unknown_sec = 0;
+      let uptime_sec = 0;
+
+      for (const d of daily) {
+        total_sec += d.total_sec;
+        downtime_sec += d.downtime_sec;
+        unknown_sec += d.unknown_sec;
+        uptime_sec += d.uptime_sec;
+      }
+
+      m.uptime_days = daily;
+      m.uptime_30d = {
+        range_start_at: rangeStart,
+        range_end_at: rangeEnd,
+        total_sec,
+        downtime_sec,
+        unknown_sec,
+        uptime_sec,
+        uptime_pct: total_sec === 0 ? 0 : (uptime_sec / total_sec) * 100,
+      };
+    }
+  }
 
   const counts: PublicStatusResponse['summary'] = { up: 0, down: 0, maintenance: 0, paused: 0, unknown: 0 };
   for (const m of monitorsList) {
@@ -321,48 +381,6 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
             : counts.paused > 0
               ? 'paused'
               : 'unknown';
-
-  const ids = monitorsList.map((m) => m.id);
-  if (ids.length > 0) {
-    const placeholders = ids.map((_, idx) => `?${idx + 1}`).join(', ');
-    const rangeStartPlaceholder = `?${ids.length + 1}`;
-    const limitPlaceholder = `?${ids.length + 2}`;
-
-    const sql = `
-      SELECT monitor_id, checked_at, status, latency_ms
-      FROM (
-        SELECT
-          monitor_id,
-          checked_at,
-          status,
-          latency_ms,
-          ROW_NUMBER() OVER (PARTITION BY monitor_id ORDER BY checked_at DESC) AS rn
-        FROM check_results
-        WHERE monitor_id IN (${placeholders})
-          AND checked_at >= ${rangeStartPlaceholder}
-      ) t
-      WHERE rn <= ${limitPlaceholder}
-      ORDER BY monitor_id, checked_at DESC
-    `;
-
-    const { results: heartbeatRows } = await db
-      .prepare(sql)
-      .bind(...ids, lookbackStart, HEARTBEAT_LIMIT)
-      .all<PublicHeartbeatRow>();
-
-    const byMonitor = new Map<number, PublicStatusResponse['monitors'][number]['heartbeats']>();
-    for (const r of heartbeatRows ?? []) {
-      const existing = byMonitor.get(r.monitor_id) ?? [];
-      existing.push({ checked_at: r.checked_at, status: toCheckStatus(r.status), latency_ms: r.latency_ms });
-      byMonitor.set(r.monitor_id, existing);
-    }
-
-    for (const m of monitorsList) {
-      const rows = byMonitor.get(m.id) ?? [];
-      // Return chronological order for easier rendering on the client.
-      m.heartbeats = rows.reverse();
-    }
-  }
 
   const { results: activeIncidents } = await db
     .prepare(

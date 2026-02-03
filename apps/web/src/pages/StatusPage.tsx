@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { fetchLatency, fetchStatus } from '../api/client';
-import type { Incident, MonitorStatus, PublicMonitor, StatusResponse } from '../api/types';
-import { HeartbeatBar } from '../components/HeartbeatBar';
+import { fetchLatency, fetchPublicMonitorOutages, fetchStatus } from '../api/client';
+import type { Incident, MonitorStatus, Outage, PublicMonitor, StatusResponse } from '../api/types';
+import { DayDowntimeModal } from '../components/DayDowntimeModal';
 import { Markdown } from '../components/Markdown';
+import { UptimeBar30d } from '../components/UptimeBar30d';
 import { Badge, Card, StatusDot, ThemeToggle } from '../components/ui';
 
 type BannerStatus = StatusResponse['banner']['status'];
@@ -52,10 +53,13 @@ function getStatusBadgeVariant(
   return status as 'up' | 'down' | 'maintenance' | 'paused' | 'unknown';
 }
 
+function formatPct(v: number): string {
+  if (!Number.isFinite(v)) return '-';
+  return `${v.toFixed(3)}%`;
+}
+
 function MonitorCard({ monitor, onSelect }: { monitor: PublicMonitor; onSelect: () => void }) {
-  const upCount = monitor.heartbeats.filter((h) => h.status === 'up').length;
-  const totalCount = monitor.heartbeats.length;
-  const uptimePercent = totalCount > 0 ? ((upCount / totalCount) * 100).toFixed(1) : null;
+  const uptime30d = monitor.uptime_30d;
 
   return (
     <Card hover onClick={onSelect} className="p-4 sm:p-5">
@@ -74,16 +78,16 @@ function MonitorCard({ monitor, onSelect }: { monitor: PublicMonitor; onSelect: 
         <Badge variant={getStatusBadgeVariant(monitor.status)}>{monitor.status}</Badge>
       </div>
 
-      <HeartbeatBar heartbeats={monitor.heartbeats} />
+      <UptimeBar30d days={monitor.uptime_days} maxBars={30} />
 
       <div className="mt-3 sm:mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
         <div className="flex items-center gap-3 sm:gap-4">
-          {uptimePercent && (
+          {uptime30d && (
             <span className="text-slate-600 dark:text-slate-300">
               <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                {uptimePercent}%
+                {formatPct(uptime30d.uptime_pct)}
               </span>{' '}
-              uptime
+              uptime (30d)
             </span>
           )}
           {monitor.last_latency_ms !== null && (
@@ -203,9 +207,7 @@ function IncidentCard({ incident, onClick }: { incident: Incident; onClick: () =
         <span>{new Date(incident.started_at * 1000).toLocaleString()}</span>
       </div>
       {incident.message && (
-        <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-2">
-          {incident.message}
-        </p>
+        <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-2">{incident.message}</p>
       )}
     </button>
   );
@@ -280,9 +282,7 @@ function IncidentDetail({
               <span className="text-slate-400 dark:text-slate-500 sm:w-20 text-xs sm:text-sm">
                 Resolved:
               </span>
-              <span className="text-sm">
-                {new Date(incident.resolved_at * 1000).toLocaleString()}
-              </span>
+              <span className="text-sm">{new Date(incident.resolved_at * 1000).toLocaleString()}</span>
             </div>
           )}
         </div>
@@ -313,7 +313,6 @@ function IncidentDetail({
     </div>
   );
 }
-
 
 function StatusPageSkeleton() {
   return (
@@ -360,58 +359,67 @@ function StatusPageSkeleton() {
 export function StatusPage() {
   const [selectedMonitorId, setSelectedMonitorId] = useState<number | null>(null);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+  const [selectedDay, setSelectedDay] = useState<{ monitorId: number; dayStartAt: number } | null>(null);
 
-  const { data, isLoading, error } = useQuery({
+  const statusQuery = useQuery({
     queryKey: ['status'],
     queryFn: fetchStatus,
-    refetchInterval: 30000,
+    refetchInterval: 30_000,
   });
 
-  if (!data) {
-    if (isLoading) {
-      return <StatusPageSkeleton />;
-    }
+  const outagesQuery = useQuery({
+    queryKey: ['public-monitor-outages', selectedDay?.monitorId],
+    queryFn: () => fetchPublicMonitorOutages(selectedDay?.monitorId as number, { range: '30d', limit: 200 }),
+    enabled: selectedDay !== null,
+  });
 
+  const currentDayOutages = useMemo((): Outage[] => {
+    if (!selectedDay) return [];
+    const all = outagesQuery.data?.outages ?? [];
+    const dayStart = selectedDay.dayStartAt;
+    const dayEnd = dayStart + 86400;
+    return all.filter((o) => o.started_at < dayEnd && (o.ended_at ?? dayEnd) > dayStart);
+  }, [outagesQuery.data?.outages, selectedDay]);
+
+  if (statusQuery.isLoading) {
+    return <StatusPageSkeleton />;
+  }
+
+  if (statusQuery.isError || !statusQuery.data) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-slate-700 dark:text-slate-200 text-lg font-medium mb-2">
-            Failed to load status
-          </div>
-          <p className="text-slate-500 dark:text-slate-400 text-sm">Please try again later</p>
-          {error && (
-            <p className="text-slate-400 dark:text-slate-500 text-xs mt-2">{String(error)}</p>
-          )}
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-2">
+            Unable to load status
+          </h2>
+          <p className="text-slate-500 dark:text-slate-400">
+            Please check your connection and try again.
+          </p>
         </div>
       </div>
     );
   }
 
+  const data = statusQuery.data;
   const bannerConfig = getBannerConfig(data.banner.status);
-  const monitorNames = new Map(data.monitors.map((m) => [m.id, m.name] as const));
-
   const activeIncidents = data.active_incidents;
+  const monitorNames = new Map(data.monitors.map((m) => [m.id, m.name] as const));
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       {/* Header */}
       <header className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center">
-          <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
-            Uptimer
-          </h1>
+          <Link to="/" className="flex items-center gap-2">
+            <span className="font-bold text-slate-900 dark:text-slate-100">Uptimer</span>
+          </Link>
           <div className="flex items-center gap-1">
             <ThemeToggle />
             <Link
               to="/admin"
-              className="flex items-center justify-center h-9 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors px-3 rounded-lg"
+              className="flex items-center justify-center h-9 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors px-3 rounded-lg"
             >
-              <svg
-                className="w-5 h-5 sm:hidden"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
+              <svg className="w-5 h-5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -442,9 +450,7 @@ export function StatusPage() {
             <p className="text-white/80 text-sm px-4">Incident: {data.banner.incident.title}</p>
           )}
           {data.banner.source === 'maintenance' && data.banner.maintenance_window && (
-            <p className="text-white/80 text-sm px-4">
-              Maintenance: {data.banner.maintenance_window.title}
-            </p>
+            <p className="text-white/80 text-sm px-4">Maintenance: {data.banner.maintenance_window.title}</p>
           )}
           <p className="text-white/60 text-xs mt-3">
             Last updated: {new Date(data.generated_at * 1000).toLocaleString()}
@@ -454,8 +460,7 @@ export function StatusPage() {
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         {/* Maintenance Windows */}
-        {(data.maintenance_windows.active.length > 0 ||
-          data.maintenance_windows.upcoming.length > 0) && (
+        {(data.maintenance_windows.active.length > 0 || data.maintenance_windows.upcoming.length > 0) && (
           <section className="mb-10">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
               <svg
@@ -470,21 +475,14 @@ export function StatusPage() {
                   strokeWidth={2}
                   d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
                 />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
               Maintenance
             </h3>
 
             {data.maintenance_windows.active.length > 0 && (
               <div className="mb-4">
-                <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">
-                  Active
-                </div>
+                <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">Active</div>
                 <div className="space-y-3">
                   {data.maintenance_windows.active.map((w) => (
                     <Card
@@ -492,17 +490,14 @@ export function StatusPage() {
                       className="p-4 sm:p-5 border-l-4 border-l-blue-500 dark:border-l-blue-400"
                     >
                       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 mb-2">
-                        <h4 className="font-semibold text-slate-900 dark:text-slate-100">
-                          {w.title}
-                        </h4>
+                        <h4 className="font-semibold text-slate-900 dark:text-slate-100">{w.title}</h4>
                         <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
                           {new Date(w.starts_at * 1000).toLocaleString()} –{' '}
                           {new Date(w.ends_at * 1000).toLocaleString()}
                         </span>
                       </div>
                       <div className="text-sm text-slate-600 dark:text-slate-300 mb-2">
-                        Affected:{' '}
-                        {w.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
+                        Affected: {w.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
                       </div>
                       {w.message && <Markdown text={w.message} />}
                     </Card>
@@ -513,9 +508,7 @@ export function StatusPage() {
 
             {data.maintenance_windows.upcoming.length > 0 && (
               <div>
-                <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">
-                  Upcoming
-                </div>
+                <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">Upcoming</div>
                 <div className="space-y-3">
                   {data.maintenance_windows.upcoming.map((w) => (
                     <Card
@@ -523,17 +516,14 @@ export function StatusPage() {
                       className="p-4 sm:p-5 border-l-4 border-l-slate-300 dark:border-l-slate-600"
                     >
                       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 mb-2">
-                        <h4 className="font-semibold text-slate-900 dark:text-slate-100">
-                          {w.title}
-                        </h4>
+                        <h4 className="font-semibold text-slate-900 dark:text-slate-100">{w.title}</h4>
                         <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
                           {new Date(w.starts_at * 1000).toLocaleString()} –{' '}
                           {new Date(w.ends_at * 1000).toLocaleString()}
                         </span>
                       </div>
                       <div className="text-sm text-slate-600 dark:text-slate-300">
-                        Affected:{' '}
-                        {w.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
+                        Affected: {w.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
                       </div>
                     </Card>
                   ))}
@@ -572,16 +562,19 @@ export function StatusPage() {
 
         {/* Monitors */}
         <section>
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">
-            Services
-          </h3>
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Services</h3>
           <div className="grid gap-4 sm:grid-cols-2">
             {data.monitors.map((monitor) => (
-              <MonitorCard
-                key={monitor.id}
-                monitor={monitor}
-                onSelect={() => setSelectedMonitorId(monitor.id)}
-              />
+              <div key={monitor.id} className="space-y-2">
+                <MonitorCard monitor={monitor} onSelect={() => setSelectedMonitorId(monitor.id)} />
+                <div className="px-1">
+                  <UptimeBar30d
+                    days={monitor.uptime_days}
+                    maxBars={30}
+                    onDayClick={(dayStartAt) => setSelectedDay({ monitorId: monitor.id, dayStartAt })}
+                  />
+                </div>
+              </div>
             ))}
           </div>
           {data.monitors.length === 0 && (
@@ -605,11 +598,27 @@ export function StatusPage() {
       )}
 
       {selectedIncident && (
-        <IncidentDetail
-          incident={selectedIncident}
-          monitorNames={monitorNames}
-          onClose={() => setSelectedIncident(null)}
+        <IncidentDetail incident={selectedIncident} monitorNames={monitorNames} onClose={() => setSelectedIncident(null)} />
+      )}
+
+      {selectedDay && (
+        <DayDowntimeModal
+          dayStartAt={selectedDay.dayStartAt}
+          outages={currentDayOutages}
+          onClose={() => setSelectedDay(null)}
         />
+      )}
+
+      {selectedDay && outagesQuery.isLoading && (
+        <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
+          <div className="bg-slate-900/80 text-white text-sm px-3 py-2 rounded-lg">Loading outages…</div>
+        </div>
+      )}
+
+      {selectedDay && outagesQuery.isError && (
+        <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
+          <div className="bg-red-600/90 text-white text-sm px-3 py-2 rounded-lg">Failed to load outages</div>
+        </div>
       )}
     </div>
   );

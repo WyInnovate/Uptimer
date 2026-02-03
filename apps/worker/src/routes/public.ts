@@ -290,10 +290,7 @@ async function listIncidentUpdatesByIncidentId(
   return byIncident;
 }
 
-async function listIncidentMonitorIdsByIncidentId(
-  db: D1Database,
-  incidentIds: number[]
-): Promise<Map<number, number[]>> {
+async function listIncidentMonitorIdsByIncidentId(db: D1Database, incidentIds: number[]): Promise<Map<number, number[]>> {
   const byIncident = new Map<number, number[]>();
   if (incidentIds.length === 0) return byIncident;
 
@@ -477,7 +474,9 @@ publicRoutes.get('/monitors/:id/latency', async (c) => {
     .map((p) => p.latency_ms as number);
 
   const avg_latency_ms =
-    upLatencies.length === 0 ? null : Math.round(upLatencies.reduce((acc, v) => acc + v, 0) / upLatencies.length);
+    upLatencies.length === 0
+      ? null
+      : Math.round(upLatencies.reduce((acc, v) => acc + v, 0) / upLatencies.length);
 
   return c.json({
     monitor: { id: monitor.id, name: monitor.name },
@@ -563,7 +562,10 @@ publicRoutes.get('/monitors/:id/uptime', async (c) => {
   );
 
   // Unknown time is treated as "unavailable" per Application.md; exclude overlap with downtime to avoid double counting.
-  const unknown_sec = Math.max(0, sumIntervals(unknownIntervals) - overlapSeconds(unknownIntervals, downtimeIntervals));
+  const unknown_sec = Math.max(
+    0,
+    sumIntervals(unknownIntervals) - overlapSeconds(unknownIntervals, downtimeIntervals)
+  );
 
   const unavailable_sec = Math.min(total_sec, downtime_sec + unknown_sec);
   const uptime_sec = Math.max(0, total_sec - unavailable_sec);
@@ -622,7 +624,10 @@ publicRoutes.get('/analytics/uptime', async (c) => {
       uptime_sec: number;
     }>();
 
-  const byMonitorId = new Map<number, { total_sec: number; downtime_sec: number; unknown_sec: number; uptime_sec: number }>();
+  const byMonitorId = new Map<
+    number,
+    { total_sec: number; downtime_sec: number; unknown_sec: number; uptime_sec: number }
+  >();
   for (const r of sumRows ?? []) {
     byMonitorId.set(r.monitor_id, {
       total_sec: r.total_sec ?? 0,
@@ -668,9 +673,79 @@ publicRoutes.get('/analytics/uptime', async (c) => {
   });
 });
 
+publicRoutes.get('/monitors/:id/outages', async (c) => {
+  const id = z.coerce.number().int().positive().parse(c.req.param('id'));
+  const range = z.enum(['30d']).optional().default('30d').parse(c.req.query('range'));
+  const limit = z.coerce.number().int().min(1).max(200).optional().default(200).parse(c.req.query('limit'));
+  const cursor = z.coerce.number().int().positive().optional().parse(c.req.query('cursor'));
+
+  const monitor = await c.env.DB
+    .prepare('SELECT id, created_at FROM monitors WHERE id = ?1 AND is_active = 1')
+    .bind(id)
+    .first<{ id: number; created_at: number }>();
+  if (!monitor) {
+    throw new AppError(404, 'NOT_FOUND', 'Monitor not found');
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const rangeEnd = Math.floor(now / 86400) * 86400; // full days only (UTC)
+  const rangeStart = Math.max(rangeEnd - 30 * 86400, monitor.created_at);
+
+  const sqlBase = `
+    SELECT id, started_at, ended_at, initial_error, last_error
+    FROM outages
+    WHERE monitor_id = ?1
+      AND started_at < ?2
+      AND (ended_at IS NULL OR ended_at > ?3)
+  `;
+
+  const take = limit + 1;
+  const { results } = cursor
+    ? await c.env.DB
+        .prepare(
+          `
+            ${sqlBase}
+              AND id < ?4
+            ORDER BY id DESC
+            LIMIT ?5
+          `
+        )
+        .bind(id, rangeEnd, rangeStart, cursor, take)
+        .all<{ id: number; started_at: number; ended_at: number | null; initial_error: string | null; last_error: string | null }>()
+    : await c.env.DB
+        .prepare(
+          `
+            ${sqlBase}
+            ORDER BY id DESC
+            LIMIT ?4
+          `
+        )
+        .bind(id, rangeEnd, rangeStart, take)
+        .all<{ id: number; started_at: number; ended_at: number | null; initial_error: string | null; last_error: string | null }>();
+
+  const rows = results ?? [];
+  const page = rows.slice(0, limit);
+  const next_cursor = rows.length > limit ? page[page.length - 1]?.id ?? null : null;
+
+  return c.json({
+    range: range as '30d',
+    range_start_at: rangeStart,
+    range_end_at: rangeEnd,
+    outages: page.map((r) => ({
+      id: r.id,
+      monitor_id: id,
+      started_at: r.started_at,
+      ended_at: r.ended_at,
+      initial_error: r.initial_error,
+      last_error: r.last_error,
+    })),
+    next_cursor,
+  });
+});
 publicRoutes.get('/health', async (c) => {
   // Minimal DB touch to verify the Worker can connect to D1.
   const db = getDb(c.env);
   await db.select({ id: monitors.id }).from(monitors).limit(1).all();
   return c.json({ ok: true });
 });
+
