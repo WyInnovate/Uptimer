@@ -62,6 +62,8 @@ function formatPct(v: number): string {
   return `${v.toFixed(3)}%`;
 }
 
+const HEARTBEAT_BARS = 60;
+
 function getUptimeTextColorClasses(uptimePct: number, level: 1 | 2 | 3 | 4 | 5): string {
   if (!Number.isFinite(uptimePct)) return 'text-slate-500 dark:text-slate-400';
 
@@ -105,6 +107,19 @@ function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: { monitor: Pub
         <Badge variant={getStatusBadgeVariant(monitor.status)}>{monitor.status}</Badge>
       </div>
 
+      <div className="mb-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+        <span className="uppercase tracking-wide">Uptime (30d)</span>
+        {uptime30d ? (
+          <span
+            className={`font-medium ${getUptimeTextColorClasses(uptime30d.uptime_pct, monitor.uptime_rating_level)}`}
+          >
+            {formatPct(uptime30d.uptime_pct)}
+          </span>
+        ) : (
+          <span>-</span>
+        )}
+      </div>
+
       <UptimeBar30d
         days={monitor.uptime_days}
         ratingLevel={monitor.uptime_rating_level}
@@ -114,19 +129,15 @@ function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: { monitor: Pub
       />
 
       <div className="mt-3 sm:mt-4">
-        <HeartbeatBar heartbeats={monitor.heartbeats ?? []} maxBars={60} />
+        <div className="mb-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+          <span className="uppercase tracking-wide">Heartbeat</span>
+          <span>Last {HEARTBEAT_BARS} checks</span>
+        </div>
+        <HeartbeatBar heartbeats={monitor.heartbeats ?? []} maxBars={HEARTBEAT_BARS} />
       </div>
 
       <div className="mt-3 sm:mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
         <div className="flex items-center gap-3 sm:gap-4">
-          {uptime30d && (
-            <span className="text-slate-600 dark:text-slate-300">
-              <span className={`font-medium ${getUptimeTextColorClasses(uptime30d.uptime_pct, monitor.uptime_rating_level)}`}>
-                {formatPct(uptime30d.uptime_pct)}
-              </span>{' '}
-              uptime (30d)
-            </span>
-          )}
           {monitor.last_latency_ms !== null && (
             <span className="text-slate-500 dark:text-slate-400">{monitor.last_latency_ms}ms</span>
           )}
