@@ -171,7 +171,7 @@ function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: { monitor: Pub
       </div>
 
       <div className="mb-1.5 flex items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-        <span className="uppercase tracking-wide">Availability</span>
+        <span className="uppercase tracking-wide">Availability (30d)</span>
         {uptime30d ? (
           <span
             className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium tabular-nums ${getAvailabilityPillClasses(uptime30d.uptime_pct, monitor.uptime_rating_level)}`}
@@ -199,7 +199,7 @@ function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: { monitor: Pub
       <div className="mt-2.5">
         <div className="mb-1.5 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
           <span className="uppercase tracking-wide">Heartbeat</span>
-          <span>Last {HEARTBEAT_BARS}</span>
+          <span>Last {HEARTBEAT_BARS} checks</span>
         </div>
         <HeartbeatBar
           heartbeats={monitor.heartbeats ?? []}
