@@ -7,7 +7,12 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "lint": "pnpm -w exec eslint --config eslint.config.mjs apps/worker",
-    "typecheck": "pnpm -w exec tsc -p apps/worker/tsconfig.json --noEmit"
+    "typecheck": "pnpm -w exec tsc -p apps/worker/tsconfig.json --noEmit",
+    "test": "vitest run --config vitest.config.ts --coverage",
+    "test:watch": "vitest --config vitest.config.ts",
+    "migrate:local": "CI=1 wrangler d1 migrations apply uptimer --local",
+    "init:local": "pnpm migrate:local && pnpm seed:local",
+    "seed:local": "wrangler d1 execute uptimer --local --file ./scripts/seed-local.sql"
   },
   "dependencies": {
     "@uptimer/db": "workspace:*",
@@ -17,6 +22,8 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.0.0",
+    "@vitest/coverage-v8": "^2.1.8",
+    "vitest": "^2.1.8",
     "wrangler": "^4.0.0"
   }
 }

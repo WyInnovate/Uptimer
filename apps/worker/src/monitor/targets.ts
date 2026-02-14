@@ -2,6 +2,13 @@ function isValidPort(n: number): boolean {
   return Number.isInteger(n) && n >= 1 && n <= 65535;
 }
 
+function normalizeLiteralHost(host: string): string {
+  if (host.startsWith('[') && host.endsWith(']')) {
+    return host.slice(1, -1);
+  }
+  return host;
+}
+
 // v0.x baseline:
 // - allow any valid TCP port (1-65535)
 // NOTE: This increases SSRF/port-scan abuse potential. Keep the blocked host/IP rules below, and rely on
@@ -41,7 +48,8 @@ function ipv4InCidr(ip: number, base: string, maskBits: number): boolean {
 }
 
 function isBlockedIpLiteral(host: string): boolean {
-  const lower = host.toLowerCase();
+  const normalized = normalizeLiteralHost(host);
+  const lower = normalized.toLowerCase();
   if (lower === '::1' || lower === '::') return true;
   if (lower === '0:0:0:0:0:0:0:1' || lower === '0:0:0:0:0:0:0:0') return true;
   if (lower.includes(':')) {
@@ -49,8 +57,8 @@ function isBlockedIpLiteral(host: string): boolean {
     if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // IPv6 ULA (fc00::/7)
   }
 
-  if (!isIpv4Literal(host)) return false;
-  const ip = ipv4ToInt(host);
+  if (!isIpv4Literal(normalized)) return false;
+  const ip = ipv4ToInt(normalized);
 
   return (
     ipv4InCidr(ip, '0.0.0.0', 8) || // "this" network

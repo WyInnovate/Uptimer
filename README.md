@@ -23,4 +23,10 @@ Typical settings:
 
 ## Local development
 
-See `LOCAL-TESTING.md`.
+One-command local bootstrap + start:
+
+```bash
+pnpm dev
+```
+
+See `LOCAL-TESTING.md` for full workflow.

@@ -7,11 +7,14 @@
 1. [环境要求](#环境要求)
 2. [安装依赖](#安装依赖)
 3. [配置环境变量](#配置环境变量)
-4. [初始化数据库](#初始化数据库)
-5. [启动开发服务器](#启动开发服务器)
-6. [测试 API 接口](#测试-api-接口)
-7. [代码质量检查](#代码质量检查)
-8. [常见问题](#常见问题)
+4. [一键初始化并启动（推荐）](#一键初始化并启动推荐)
+5. [初始化数据库（手动）](#初始化数据库手动)
+6. [快速注入测试数据（手动）](#快速注入测试数据手动)
+7. [启动开发服务器（手动）](#启动开发服务器手动)
+8. [测试 API 接口](#测试-api-接口)
+9. [自动化测试（90%场景覆盖）](#自动化测试90场景覆盖)
+10. [代码质量检查](#代码质量检查)
+11. [常见问题](#常见问题)
 
 ---
 
@@ -69,7 +72,26 @@ ADMIN_TOKEN=your-secure-token-here
 
 ---
 
-## 初始化数据库
+## 一键初始化并启动（推荐）
+
+在项目根目录执行：
+
+```bash
+pnpm dev
+```
+
+该命令会自动完成：
+- Worker 本地数据库 migration（`apps/worker`）
+- 本地种子数据注入（覆盖常见状态与事件场景）
+- 并行启动 Worker 与 Web 开发服务器
+
+默认地址：
+- Worker: `http://localhost:8787`
+- Web: `http://localhost:5173`
+
+---
+
+## 初始化数据库（手动）
 
 Uptimer 使用 Cloudflare D1（SQLite）数据库。本地开发时，Wrangler 会自动创建本地数据库。
 
@@ -100,11 +122,37 @@ wrangler d1 execute uptimer --local --command="SELECT name FROM sqlite_master WH
 - notification_deliveries
 - settings
 - locks
+- monitor_daily_rollups
 - public_snapshots
 
 ---
 
-## 启动开发服务器
+## 快速注入测试数据（手动）
+
+为了覆盖本地联调中最常见的状态组合（`up/down/maintenance/paused/unknown`）与事件场景，Worker 提供了本地种子数据脚本：
+
+```bash
+cd apps/worker
+pnpm seed:local
+```
+
+该脚本会在保留 ID 区间 `900001-900099` 内写入演示数据（不会覆盖你手工创建的普通 ID 数据），包含：
+- 6 个 monitors（HTTP/TCP）
+- 对应 `monitor_state` 与近 60 条心跳数据
+- 进行中 outage + 已恢复 outage
+- 未解决/已解决 incidents 及 updates
+- active/upcoming maintenance windows
+- 30 天 rollup（用于 status page uptime bar 与 analytics）
+
+可用下面命令快速确认：
+
+```bash
+wrangler d1 execute uptimer --local --command="SELECT id,name,type,target FROM monitors WHERE id BETWEEN 900001 AND 900099 ORDER BY id;"
+```
+
+---
+
+## 启动开发服务器（手动）
 
 需要同时启动前端和后端服务器。建议使用两个终端窗口。
 
@@ -468,6 +516,30 @@ curl -L "http://localhost:8787/api/v1/admin/exports/incidents.csv?range=90d" \
 ```bash
 curl "http://localhost:8787/api/v1/public/analytics/uptime?range=30d"
 ```
+
+## 自动化测试（90%场景覆盖）
+
+Worker 侧新增了高价值纯逻辑模块测试（状态机、目标校验、uptime 计算、延迟直方图、通知模板），并设置了覆盖率阈值（line/function/statement >= 90%，branch >= 85%）。
+
+在仓库根目录运行：
+
+```bash
+pnpm test
+```
+
+仅运行 Worker 覆盖率测试：
+
+```bash
+pnpm --filter @uptimer/worker test
+```
+
+测试文件位于：
+
+- `apps/worker/test/monitor-state-machine.test.ts`
+- `apps/worker/test/monitor-targets.test.ts`
+- `apps/worker/test/analytics-uptime.test.ts`
+- `apps/worker/test/analytics-latency.test.ts`
+- `apps/worker/test/notify-template.test.ts`
 
 ## 代码质量检查
 
