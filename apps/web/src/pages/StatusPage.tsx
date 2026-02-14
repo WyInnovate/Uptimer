@@ -154,15 +154,15 @@ function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: { monitor: Pub
     : 'Never checked';
 
   return (
-    <Card hover onClick={onSelect} className="p-3.5 sm:p-4">
+    <Card hover onClick={onSelect} className="p-4 sm:p-5">
       <div className="mb-2.5 flex items-start justify-between gap-2">
         <div className="min-w-0 flex items-center gap-2.5">
           <StatusDot status={monitor.status} pulse={monitor.status === 'down'} size="sm" />
           <div className="min-w-0">
-            <h3 className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100 sm:text-[15px]">
+            <h3 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
               {monitor.name}
             </h3>
-            <span className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <span className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
               {monitor.type}
             </span>
           </div>
@@ -170,11 +170,11 @@ function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: { monitor: Pub
         <Badge variant={getStatusBadgeVariant(monitor.status)}>{monitor.status}</Badge>
       </div>
 
-      <div className="mb-1.5 flex items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+      <div className="mb-1.5 flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
         <span className="uppercase tracking-wide">Availability (30d)</span>
         {uptime30d ? (
           <span
-            className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium tabular-nums ${getAvailabilityPillClasses(uptime30d.uptime_pct, monitor.uptime_rating_level)}`}
+            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium tabular-nums ${getAvailabilityPillClasses(uptime30d.uptime_pct, monitor.uptime_rating_level)}`}
             title="Average availability over the last 30 days"
           >
             <span
@@ -197,7 +197,7 @@ function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: { monitor: Pub
       />
 
       <div className="mt-2.5">
-        <div className="mb-1.5 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+        <div className="mb-1.5 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
           <span className="uppercase tracking-wide">Heartbeat</span>
           <span>Last {HEARTBEAT_BARS} checks</span>
         </div>
@@ -208,7 +208,7 @@ function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: { monitor: Pub
         />
       </div>
 
-      <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+      <div className="mt-2.5 flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
         <span className="tabular-nums">{monitor.last_latency_ms !== null ? `${monitor.last_latency_ms}ms` : '-'}</span>
         <span className="truncate text-slate-400 dark:text-slate-500">{checkedAt}</span>
       </div>
@@ -432,20 +432,20 @@ function StatusPageSkeleton() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/95 backdrop-blur dark:border-slate-700/80 dark:bg-slate-800/95">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center">
+        <div className="mx-auto max-w-[88rem] px-4 py-3 sm:px-6 sm:py-4 lg:px-8 flex justify-between items-center">
           <div className="ui-skeleton h-6 w-28 rounded" />
           <div className="ui-skeleton h-8 w-20 rounded-full" />
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <main className="mx-auto max-w-[88rem] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <div className="ui-skeleton h-20 sm:h-24 rounded-2xl mb-8" />
 
         <section>
           <div className="h-6 w-24 bg-slate-200 dark:bg-slate-700 rounded mb-4" />
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 6 }).map((_, idx) => (
-              <Card key={idx} className="p-3.5 sm:p-4">
+              <Card key={idx} className="p-4 sm:p-5">
                 <div className="mb-2.5 flex items-start justify-between">
                   <div className="flex min-w-0 items-center gap-2.5">
                     <div className="h-3 w-3 rounded-full bg-slate-200 dark:bg-slate-700" />
@@ -565,11 +565,11 @@ export function StatusPage() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/95 backdrop-blur dark:border-slate-700/80 dark:bg-slate-800/95">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center">
+        <div className="mx-auto max-w-[88rem] px-4 py-3 sm:px-6 sm:py-4 lg:px-8 flex justify-between items-center">
           <Link to="/" className="flex flex-col justify-center min-w-0 min-h-9">
-            <span className="text-lg sm:text-xl font-bold leading-tight text-slate-900 dark:text-slate-100 truncate">{siteTitle}</span>
+            <span className="text-xl sm:text-2xl font-bold leading-tight text-slate-900 dark:text-slate-100 truncate">{siteTitle}</span>
             {data.site_description ? (
-              <span className="mt-0.5 text-xs sm:text-sm leading-tight text-slate-500 dark:text-slate-400 truncate">{data.site_description}</span>
+              <span className="mt-0.5 text-sm leading-tight text-slate-500 dark:text-slate-400 truncate">{data.site_description}</span>
             ) : null}
           </Link>
           <div className="flex items-center gap-1">
@@ -580,28 +580,28 @@ export function StatusPage() {
 
       {/* Status Banner */}
       <div className={`bg-gradient-to-r ${bannerConfig.bg} text-white`}>
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12 text-center">
-          <div className="inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/20 text-xl sm:text-2xl mb-3 sm:mb-4">
+        <div className="mx-auto max-w-[88rem] px-4 py-10 sm:px-6 sm:py-14 lg:px-8 text-center">
+          <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/20 text-2xl sm:text-3xl mb-3 sm:mb-4">
             {bannerConfig.icon}
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold mb-2">{bannerConfig.text}</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold mb-2">{bannerConfig.text}</h2>
           {data.banner.source === 'incident' && data.banner.incident && (
-            <p className="text-white/80 text-sm px-4">Incident: {data.banner.incident.title}</p>
+            <p className="text-white/80 text-base px-4">Incident: {data.banner.incident.title}</p>
           )}
           {data.banner.source === 'maintenance' && data.banner.maintenance_window && (
-            <p className="text-white/80 text-sm px-4">Maintenance: {data.banner.maintenance_window.title}</p>
+            <p className="text-white/80 text-base px-4">Maintenance: {data.banner.maintenance_window.title}</p>
           )}
-          <p className="text-white/60 text-xs mt-3">
+          <p className="text-white/60 text-sm mt-3">
             Last updated: {formatDateTime(data.generated_at, timeZone)}
           </p>
         </div>
       </div>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+      <main className="mx-auto max-w-[88rem] px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
         {/* Maintenance Windows */}
         {(data.maintenance_windows.active.length > 0 || data.maintenance_windows.upcoming.length > 0) && (
           <section className="mb-10">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+            <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
               <svg
                 className="w-5 h-5 text-blue-500 dark:text-blue-400"
                 fill="none"
@@ -675,7 +675,7 @@ export function StatusPage() {
         {/* Active Incidents */}
         {activeIncidents.length > 0 && (
           <section className="mb-10">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+            <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
               <svg
                 className="w-5 h-5 text-amber-500 dark:text-amber-400"
                 fill="none"
@@ -701,8 +701,8 @@ export function StatusPage() {
 
         {/* Monitors */}
         <section>
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Services</h3>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-4">Services</h3>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {data.monitors.map((monitor) => (
               <MonitorCard
                 key={monitor.id}
@@ -723,10 +723,10 @@ export function StatusPage() {
         <section className="mt-12 pt-8 border-t border-slate-100 dark:border-slate-800 space-y-10">
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Incident History</h3>
+              <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Incident History</h3>
               <Link
                 to="/history/incidents"
-                className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                className="text-base text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
               >
                 View more
               </Link>
@@ -753,10 +753,10 @@ export function StatusPage() {
 
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Maintenance History</h3>
+              <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Maintenance History</h3>
               <Link
                 to="/history/maintenance"
-                className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                className="text-base text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
               >
                 View more
               </Link>
@@ -793,7 +793,7 @@ export function StatusPage() {
 
       {/* Footer */}
       <footer className="border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-800">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-6 text-center text-sm text-slate-400 dark:text-slate-500">
+        <div className="mx-auto max-w-[88rem] px-4 py-4 text-center text-base text-slate-400 dark:text-slate-500 sm:px-6 sm:py-6 lg:px-8">
           Powered by {siteTitle}
         </div>
       </footer>

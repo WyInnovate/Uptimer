@@ -55,7 +55,7 @@ function RangeTabs<T extends string>({
           key={value}
           onClick={() => onChange(value)}
           className={cn(
-            'rounded-md px-2.5 py-1 text-xs font-medium transition-colors sm:px-3',
+            'rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors sm:px-3',
             current === value
               ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
               : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100',
@@ -79,12 +79,12 @@ function StatTile({
 }) {
   return (
     <div className="rounded-xl border border-slate-200/80 bg-white/80 p-4 dark:border-slate-700/80 dark:bg-slate-800/50">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      <div className="text-sm font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
         {label}
       </div>
       <div
         className={cn(
-          'mt-2 text-xl font-semibold tabular-nums',
+          'mt-2 text-2xl font-semibold tabular-nums',
           tone === 'danger'
             ? 'text-red-600 dark:text-red-400'
             : 'text-slate-900 dark:text-slate-100',
@@ -179,8 +179,8 @@ export function AdminAnalytics() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <header className="bg-white dark:bg-slate-800 shadow-sm dark:shadow-none dark:border-b dark:border-slate-700">
-        <div className="max-w-6xl mx-auto px-4 py-3 sm:py-4 flex justify-between items-center">
-          <h1 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-slate-100">
+        <div className="mx-auto max-w-[92rem] px-4 py-3 sm:px-6 sm:py-4 lg:px-8 flex justify-between items-center">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-slate-100">
             {settings?.site_title ? `${settings.site_title} · Analytics` : 'Analytics'}
           </h1>
 
@@ -188,7 +188,7 @@ export function AdminAnalytics() {
             <ThemeToggle />
             <Link
               to={ADMIN_PATH}
-              className="flex items-center justify-center h-9 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors px-3 rounded-lg"
+              className="flex items-center justify-center h-10 text-base text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors px-3 rounded-lg"
             >
               <svg className="w-5 h-5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
@@ -202,7 +202,7 @@ export function AdminAnalytics() {
             </Link>
             <Link
               to="/"
-              className="flex items-center justify-center h-9 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors px-3 rounded-lg"
+              className="flex items-center justify-center h-10 text-base text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors px-3 rounded-lg"
             >
               <svg className="w-5 h-5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
@@ -216,7 +216,7 @@ export function AdminAnalytics() {
             </Link>
             <button
               onClick={logout}
-              className="flex items-center justify-center h-9 text-sm text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors px-3 rounded-lg"
+              className="flex items-center justify-center h-10 text-base text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors px-3 rounded-lg"
             >
               <svg className="w-5 h-5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
@@ -232,11 +232,11 @@ export function AdminAnalytics() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <main className="mx-auto max-w-[92rem] space-y-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <Card className="p-5 sm:p-6">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 sm:text-xl">
                 Overview
               </h2>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
@@ -298,7 +298,7 @@ export function AdminAnalytics() {
           <div className="mb-5 flex flex-col gap-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 sm:text-xl">
                   Monitor Analytics
                 </h2>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">

@@ -184,7 +184,7 @@ export function IncidentHistoryPage() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <header className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center">
+        <div className="mx-auto max-w-[88rem] px-4 py-3 sm:px-6 sm:py-4 lg:px-8 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <Link
               to="/"
@@ -195,13 +195,13 @@ export function IncidentHistoryPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </Link>
-            <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">Incident History</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">Incident History</h1>
           </div>
           <ThemeToggle />
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+      <main className="mx-auto max-w-[88rem] px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
         {isInitialLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 3 }).map((_, idx) => (

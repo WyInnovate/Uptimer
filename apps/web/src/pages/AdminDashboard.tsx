@@ -97,7 +97,7 @@ type ChannelTestErrorState = {
 };
 
 const navActionClass =
-  'flex items-center justify-center h-9 rounded-lg px-3 text-sm transition-colors';
+  'flex items-center justify-center h-10 rounded-lg px-3 text-base transition-colors';
 
 const tabContainerClass =
   'flex gap-1 rounded-xl border border-slate-200/70 bg-white/80 p-1 shadow-sm dark:border-slate-700 dark:bg-slate-800/80';
@@ -451,8 +451,8 @@ export function AdminDashboard() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <header className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center">
-          <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">Admin Dashboard</h1>
+        <div className="mx-auto max-w-[92rem] px-4 py-3 sm:px-6 sm:py-4 lg:px-8 flex justify-between items-center">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">Admin Dashboard</h1>
           <div className="flex items-center gap-1">
             <ThemeToggle />
             <Link
@@ -501,7 +501,7 @@ export function AdminDashboard() {
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-4 sm:pt-6">
+      <div className="mx-auto max-w-[92rem] px-4 pt-4 sm:px-6 sm:pt-6 lg:px-8">
         <div className={`${tabContainerClass} overflow-x-auto scrollbar-hide`}>
           {tabs.map((t) => (
             <button
@@ -510,7 +510,7 @@ export function AdminDashboard() {
               aria-label={t.label}
               title={t.label}
               className={cn(
-                'flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all sm:gap-2 sm:px-4 whitespace-nowrap',
+                'flex items-center gap-1.5 rounded-lg px-3 py-2 text-base font-medium transition-all sm:gap-2 sm:px-4 whitespace-nowrap',
                 tab === t.key
                   ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900'
                   : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200',
@@ -525,11 +525,11 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+      <main className="mx-auto max-w-[92rem] px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
         {tab === 'monitors' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Monitors</h2>
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Monitors</h2>
               <Button onClick={() => setModal({ type: 'create-monitor' })}>Add Monitor</Button>
             </div>
             {testingMonitorId !== null && (
@@ -722,7 +722,7 @@ export function AdminDashboard() {
         {tab === 'notifications' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Notification Channels</h2>
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Notification Channels</h2>
               <Button onClick={() => setModal({ type: 'create-channel' })}>Add Channel</Button>
             </div>
             {testingChannelId !== null && (
@@ -855,7 +855,7 @@ export function AdminDashboard() {
         {tab === 'settings' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Settings</h2>
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Settings</h2>
             </div>
 
             <Card className="p-4 sm:p-5">
@@ -1158,7 +1158,7 @@ export function AdminDashboard() {
         {tab === 'incidents' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Incidents</h2>
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Incidents</h2>
               <Button onClick={() => setModal({ type: 'create-incident' })}>Create Incident</Button>
             </div>
             {incidentsQuery.isLoading ? (
@@ -1230,7 +1230,7 @@ export function AdminDashboard() {
         {tab === 'maintenance' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Maintenance Windows</h2>
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Maintenance Windows</h2>
               <Button onClick={() => setModal({ type: 'create-maintenance' })}>Create Window</Button>
             </div>
             {maintenanceQuery.isLoading ? (
@@ -1295,7 +1295,7 @@ export function AdminDashboard() {
       {modal.type !== 'none' && (
         <div className={MODAL_OVERLAY_CLASS}>
           <div className={`${MODAL_PANEL_CLASS} sm:max-w-md p-5 sm:p-6`}>
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-5">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-5">
               {modal.type === 'create-monitor' && 'Create Monitor'}
               {modal.type === 'edit-monitor' && 'Edit Monitor'}
               {modal.type === 'create-channel' && 'Create Channel'}

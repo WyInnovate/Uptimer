@@ -25,7 +25,7 @@ export const MODAL_PANEL_CLASS = 'ui-modal-panel animate-slide-up';
 
 export const INPUT_CLASS = cn(
   'ui-input',
-  'text-sm',
+  'text-base',
   'bg-white/90 dark:bg-slate-700/80',
   'border-slate-200 dark:border-slate-600',
   'placeholder:text-slate-400 dark:placeholder:text-slate-500',
@@ -33,14 +33,14 @@ export const INPUT_CLASS = cn(
 
 export const SELECT_CLASS = cn(
   'ui-select',
-  'text-sm',
+  'text-base',
   'bg-white/90 dark:bg-slate-700/80',
   'border-slate-200 dark:border-slate-600',
 );
 
 export const TEXTAREA_CLASS = cn(
   'ui-textarea',
-  'text-sm',
+  'text-base',
   'bg-white/90 dark:bg-slate-700/80',
   'border-slate-200 dark:border-slate-600',
   'placeholder:text-slate-400 dark:placeholder:text-slate-500',
@@ -71,7 +71,7 @@ const badgeStyles = {
 };
 
 export function Badge({ variant, children, size = 'sm' }: BadgeProps) {
-  const sizeClass = size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs';
+  const sizeClass = size === 'sm' ? 'px-2.5 py-0.5 text-xs' : 'px-3 py-1 text-sm';
   return (
     <span
       className={cn(
@@ -182,9 +182,9 @@ const buttonVariants = {
 };
 
 const buttonSizes = {
-  sm: 'h-8 px-3 text-sm',
-  md: 'h-9 px-4 text-sm',
-  lg: 'h-10 px-5 text-base',
+  sm: 'h-9 px-3.5 text-sm',
+  md: 'h-10 px-4 text-base',
+  lg: 'h-11 px-5 text-base',
 };
 
 export function Button({
@@ -276,7 +276,7 @@ export function ThemeToggle() {
     <button
       onClick={cycleTheme}
       className={cn(
-        'flex h-9 w-9 items-center justify-center rounded-lg',
+        'flex h-10 w-10 items-center justify-center rounded-lg',
         'text-slate-500 hover:bg-slate-100 hover:text-slate-900',
         'dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100',
         'transition-colors',
