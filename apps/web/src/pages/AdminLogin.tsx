@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../app/AuthContext';
@@ -16,6 +16,10 @@ export function AdminLogin() {
   const from =
     (location.state as { from?: { pathname: string } })?.from?.pathname ||
     ADMIN_PATH;
+
+  useEffect(() => {
+    document.title = 'Uptimer · Admin Login';
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

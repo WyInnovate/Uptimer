@@ -121,7 +121,12 @@ export function AdminAnalytics() {
   );
 
   const settings = settingsQuery.data?.settings;
+  const siteTitle = settings?.site_title?.trim() || 'Uptimer';
   const timeZone = settings?.site_timezone || 'UTC';
+
+  useEffect(() => {
+    document.title = `${siteTitle} · Analytics`;
+  }, [siteTitle]);
 
   useEffect(() => {
     if (!settings) return;

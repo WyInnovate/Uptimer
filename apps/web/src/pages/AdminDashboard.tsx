@@ -179,6 +179,11 @@ export function AdminDashboard() {
   });
 
   const settings = settingsQuery.data?.settings;
+  const siteTitle = settings?.site_title?.trim() || 'Uptimer';
+
+  useEffect(() => {
+    document.title = `${siteTitle} · Admin`;
+  }, [siteTitle]);
 
   const [settingsDraft, setSettingsDraft] = useState<AdminSettings | null>(null);
   const [focusedSetting, setFocusedSetting] = useState<keyof AdminSettings | null>(null);
