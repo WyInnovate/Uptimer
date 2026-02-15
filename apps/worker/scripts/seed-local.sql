@@ -419,7 +419,7 @@ VALUES
 
 -- 7) Settings + 30-day rollup samples (status page/admin analytics warm start).
 INSERT OR REPLACE INTO settings (key, value) VALUES ('site_title', 'Uptimer Local Demo');
-INSERT OR REPLACE INTO settings (key, value) VALUES ('site_description', 'Seeded data for local verification');
+INSERT OR REPLACE INTO settings (key, value) VALUES ('site_description', '');
 INSERT OR REPLACE INTO settings (key, value) VALUES ('site_timezone', 'UTC');
 INSERT OR REPLACE INTO settings (key, value) VALUES ('retention_check_results_days', '14');
 INSERT OR REPLACE INTO settings (key, value) VALUES ('state_failures_to_down_from_up', '2');

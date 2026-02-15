@@ -56,9 +56,9 @@ export function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: Monitor
   const tier = uptime30d ? getUptimeTier(uptime30d.uptime_pct, monitor.uptime_rating_level) : null;
 
   return (
-    <Card hover onClick={onSelect} className="p-4">
+    <Card hover onClick={onSelect} className="p-3 sm:p-4">
       {/* Header */}
-      <div className="mb-3 flex items-start justify-between gap-2">
+      <div className="mb-2.5 sm:mb-3 flex items-start justify-between gap-2">
         <div className="min-w-0 flex items-center gap-2.5">
           <StatusDot status={monitor.status} pulse={monitor.status === 'down'} size="sm" />
           <div className="min-w-0">
@@ -94,7 +94,7 @@ export function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: Monitor
 
       {/* Availability (30d) */}
       <div>
-        <div className="mb-1 text-[11px] text-slate-400 dark:text-slate-500">30-day availability</div>
+        <div className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">30-day availability</div>
         <UptimeBar30d
           days={monitor.uptime_days}
           ratingLevel={monitor.uptime_rating_level}
@@ -108,7 +108,7 @@ export function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: Monitor
 
       {/* Heartbeat */}
       <div className="mt-2">
-        <div className="mb-1 text-[11px] text-slate-400 dark:text-slate-500">Last {HEARTBEAT_BARS} checks</div>
+        <div className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">Last {HEARTBEAT_BARS} checks</div>
         <HeartbeatBar
           heartbeats={monitor.heartbeats ?? []}
           maxBars={HEARTBEAT_BARS}
@@ -117,8 +117,8 @@ export function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: Monitor
       </div>
 
       {/* Latency + timestamp footer */}
-      <div className="mt-2.5 flex items-baseline justify-between text-xs text-slate-500 dark:text-slate-400">
-        <div className="flex items-baseline gap-3 tabular-nums">
+      <div className="mt-2 sm:mt-2.5 flex flex-wrap items-baseline justify-between gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+        <div className="flex items-baseline gap-2 sm:gap-3 tabular-nums">
           <span><span className="text-slate-400 dark:text-slate-500">fast</span> {formatLatency(latencyStats.fastestMs)}</span>
           <span><span className="text-slate-400 dark:text-slate-500">avg</span> {formatLatency(latencyStats.avgMs)}</span>
           <span><span className="text-slate-400 dark:text-slate-500">slow</span> {formatLatency(latencyStats.slowestMs)}</span>

@@ -28,27 +28,27 @@ const LatencyChart = lazy(async () => {
 function getBannerConfig(status: BannerStatus) {
   const configs = {
     operational: {
-      bg: 'from-emerald-500 to-emerald-600',
+      iconBg: 'bg-emerald-500',
       text: 'All Systems Operational',
       icon: '✓',
     },
     partial_outage: {
-      bg: 'from-amber-500 to-orange-500',
+      iconBg: 'bg-amber-500',
       text: 'Partial System Outage',
       icon: '!',
     },
     major_outage: {
-      bg: 'from-red-500 to-red-600',
+      iconBg: 'bg-red-500',
       text: 'Major System Outage',
       icon: '✕',
     },
     maintenance: {
-      bg: 'from-blue-500 to-blue-600',
+      iconBg: 'bg-blue-500',
       text: 'Scheduled Maintenance',
       icon: '⚙',
     },
     unknown: {
-      bg: 'from-slate-500 to-slate-600',
+      iconBg: 'bg-slate-500',
       text: 'Status Unknown',
       icon: '?',
     },
@@ -138,7 +138,7 @@ function IncidentCard({ incident, onClick, timeZone }: { incident: Incident; onC
   return (
     <button
       onClick={onClick}
-      className="ui-panel ui-panel-hover w-full rounded-xl p-5 text-left"
+      className="ui-panel ui-panel-hover w-full rounded-xl p-3.5 sm:p-5 text-left"
     >
       <div className="flex items-start justify-between gap-4 mb-2">
         <h4 className="font-semibold text-slate-900 dark:text-slate-100">{incident.title}</h4>
@@ -272,18 +272,18 @@ function StatusPageSkeleton() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/95 backdrop-blur dark:border-slate-700/80 dark:bg-slate-800/95">
-        <div className="mx-auto max-w-[88rem] px-4 py-3 sm:px-6 sm:py-4 lg:px-8 flex justify-between items-center">
+        <div className="mx-auto max-w-5xl px-4 py-3 sm:px-6 sm:py-4 lg:px-8 flex justify-between items-center">
           <div className="ui-skeleton h-6 w-28 rounded" />
           <div className="ui-skeleton h-8 w-20 rounded-full" />
         </div>
       </header>
 
-      <main className="mx-auto max-w-[88rem] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-        <div className="ui-skeleton h-20 sm:h-24 rounded-2xl mb-8" />
+      <main className="mx-auto max-w-5xl px-4 py-4 sm:px-6 sm:py-7 lg:px-8">
+        <div className="ui-skeleton h-16 sm:h-24 rounded-2xl mb-6 sm:mb-8" />
 
         <section>
           <div className="h-6 w-24 bg-slate-200 dark:bg-slate-700 rounded mb-4" />
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-2.5 sm:gap-3 md:grid-cols-2">
             {Array.from({ length: 6 }).map((_, idx) => (
               <Card key={idx} className="p-4 sm:p-5">
                 <div className="mb-2.5 flex items-start justify-between">
@@ -405,7 +405,7 @@ export function StatusPage() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/95 backdrop-blur dark:border-slate-700/80 dark:bg-slate-800/95">
-        <div className="mx-auto max-w-[88rem] px-4 py-3 sm:px-6 sm:py-4 lg:px-8 flex justify-between items-center">
+        <div className="mx-auto max-w-5xl px-4 py-3 sm:px-6 sm:py-4 lg:px-8 flex justify-between items-center">
           <Link to="/" className="flex flex-col justify-center min-w-0 min-h-9">
             <span className="text-xl sm:text-2xl font-bold leading-tight text-slate-900 dark:text-slate-100 truncate">{siteTitle}</span>
             {data.site_description ? (
@@ -419,31 +419,31 @@ export function StatusPage() {
       </header>
 
       {/* Status Banner */}
-      <div className={`bg-gradient-to-r ${bannerConfig.bg} text-white`}>
-        <div className="mx-auto max-w-[88rem] px-4 py-10 sm:px-6 sm:py-14 lg:px-8 text-center">
-          <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/20 text-2xl sm:text-3xl mb-3 sm:mb-4">
+      <div>
+        <div className="mx-auto max-w-5xl px-4 pt-7 pb-3 sm:px-6 sm:pt-12 sm:pb-5 lg:px-8 text-center">
+          <div className={`inline-flex items-center justify-center w-9 h-9 sm:w-12 sm:h-12 rounded-full ${bannerConfig.iconBg} text-white text-lg sm:text-2xl mb-2 sm:mb-3`}>
             {bannerConfig.icon}
           </div>
-          <h2 className="text-2xl sm:text-3xl font-bold mb-2">{bannerConfig.text}</h2>
+          <h2 className="text-lg sm:text-2xl font-bold mb-1 text-slate-900 dark:text-slate-100">{bannerConfig.text}</h2>
           {data.banner.source === 'incident' && data.banner.incident && (
-            <p className="text-white/80 text-base px-4">Incident: {data.banner.incident.title}</p>
+            <p className="text-slate-500 dark:text-slate-400 text-sm px-4">Incident: {data.banner.incident.title}</p>
           )}
           {data.banner.source === 'maintenance' && data.banner.maintenance_window && (
-            <p className="text-white/80 text-base px-4">Maintenance: {data.banner.maintenance_window.title}</p>
+            <p className="text-slate-500 dark:text-slate-400 text-sm px-4">Maintenance: {data.banner.maintenance_window.title}</p>
           )}
-          <p className="text-white/60 text-sm mt-3">
+          <p className="text-slate-400 dark:text-slate-500 text-xs mt-2">
             Last updated: {formatDateTime(data.generated_at, timeZone)}
           </p>
         </div>
       </div>
 
-      <main className="mx-auto max-w-[88rem] px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
+      <main className="mx-auto max-w-5xl px-4 py-4 sm:px-6 sm:py-7 lg:px-8">
         {/* Maintenance Windows */}
         {(data.maintenance_windows.active.length > 0 || data.maintenance_windows.upcoming.length > 0) && (
-          <section className="mb-10">
-            <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+          <section className="mb-6 sm:mb-8">
+            <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2.5 sm:mb-3 flex items-center gap-2">
               <svg
-                className="w-5 h-5 text-blue-500 dark:text-blue-400"
+                className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500 dark:text-blue-400"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -514,10 +514,10 @@ export function StatusPage() {
 
         {/* Active Incidents */}
         {activeIncidents.length > 0 && (
-          <section className="mb-10">
-            <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+          <section className="mb-6 sm:mb-8">
+            <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2.5 sm:mb-3 flex items-center gap-2">
               <svg
-                className="w-5 h-5 text-amber-500 dark:text-amber-400"
+                className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500 dark:text-amber-400"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -541,8 +541,8 @@ export function StatusPage() {
 
         {/* Monitors */}
         <section>
-          <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-4">Services</h3>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2.5 sm:mb-3">Services</h3>
+          <div className="grid gap-2.5 sm:gap-3 md:grid-cols-2">
             {data.monitors.map((monitor) => (
               <MonitorCard
                 key={monitor.id}
@@ -560,13 +560,13 @@ export function StatusPage() {
           )}
         </section>
 
-        <section className="mt-12 pt-8 border-t border-slate-100 dark:border-slate-800 space-y-10">
+        <section className="mt-6 pt-5 sm:mt-8 sm:pt-6 border-t border-slate-100 dark:border-slate-800 space-y-6 sm:space-y-8">
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Incident History</h3>
+            <div className="flex items-center justify-between mb-2.5 sm:mb-3">
+              <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100">Incident History</h3>
               <Link
                 to="/history/incidents"
-                className="text-base text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
               >
                 View more
               </Link>
@@ -592,11 +592,11 @@ export function StatusPage() {
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Maintenance History</h3>
+            <div className="flex items-center justify-between mb-2.5 sm:mb-3">
+              <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100">Maintenance History</h3>
               <Link
                 to="/history/maintenance"
-                className="text-base text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
               >
                 View more
               </Link>
@@ -633,7 +633,7 @@ export function StatusPage() {
 
       {/* Footer */}
       <footer className="border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-800">
-        <div className="mx-auto max-w-[88rem] px-4 py-4 text-center text-base text-slate-400 dark:text-slate-500 sm:px-6 sm:py-6 lg:px-8">
+        <div className="mx-auto max-w-5xl px-4 py-3 text-center text-sm text-slate-400 dark:text-slate-500 sm:px-6 sm:py-4 lg:px-8">
           Powered by {siteTitle}
         </div>
       </footer>

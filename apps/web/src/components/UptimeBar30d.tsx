@@ -172,8 +172,8 @@ export function UptimeBar30d({
       <div
         data-bar-chart
         className={compact
-          ? 'flex h-5 items-end gap-[2px] sm:h-6'
-          : 'flex h-6 items-end gap-[2px] sm:h-8 sm:gap-[3px]'}
+          ? 'flex h-5 items-end gap-[2px] overflow-hidden sm:h-6'
+          : 'flex h-6 items-end gap-[2px] overflow-hidden sm:h-8 sm:gap-[3px]'}
       >
         {emptyCount > 0 &&
           Array.from({ length: emptyCount }).map((_, idx) => (
