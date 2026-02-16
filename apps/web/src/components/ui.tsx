@@ -1,8 +1,4 @@
-import type {
-  ButtonHTMLAttributes,
-  KeyboardEvent,
-  ReactNode,
-} from 'react';
+import type { ButtonHTMLAttributes, KeyboardEvent, ReactNode } from 'react';
 
 import { useI18n } from '../app/I18nContext';
 import { useTheme } from '../app/ThemeContext';
@@ -47,11 +43,9 @@ export const TEXTAREA_CLASS = cn(
   'placeholder:text-slate-400 dark:placeholder:text-slate-500',
 );
 
-export const FIELD_LABEL_CLASS =
-  'ui-label text-sm font-medium text-slate-700 dark:text-slate-300';
+export const FIELD_LABEL_CLASS = 'ui-label text-sm font-medium text-slate-700 dark:text-slate-300';
 
-export const FIELD_HELP_CLASS =
-  'ui-help text-xs text-slate-500 dark:text-slate-400';
+export const FIELD_HELP_CLASS = 'ui-help text-xs text-slate-500 dark:text-slate-400';
 
 interface BadgeProps {
   variant: 'up' | 'down' | 'maintenance' | 'paused' | 'unknown' | 'info';
@@ -163,8 +157,7 @@ export function Card({ children, className = '', hover = false, onClick }: CardP
   );
 }
 
-export interface ButtonProps
-  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'> {
+export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'> {
   children: ReactNode;
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
   size?: 'sm' | 'md' | 'lg';
@@ -217,13 +210,7 @@ export function Button({
 }
 
 const SunIcon = () => (
-  <svg
-    className="h-4 w-4"
-    fill="none"
-    viewBox="0 0 24 24"
-    stroke="currentColor"
-    strokeWidth={2}
-  >
+  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -233,13 +220,7 @@ const SunIcon = () => (
 );
 
 const MoonIcon = () => (
-  <svg
-    className="h-4 w-4"
-    fill="none"
-    viewBox="0 0 24 24"
-    stroke="currentColor"
-    strokeWidth={2}
-  >
+  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -249,13 +230,7 @@ const MoonIcon = () => (
 );
 
 const SystemIcon = () => (
-  <svg
-    className="h-4 w-4"
-    fill="none"
-    viewBox="0 0 24 24"
-    stroke="currentColor"
-    strokeWidth={2}
-  >
+  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path
       strokeLinecap="round"
       strokeLinejoin="round"

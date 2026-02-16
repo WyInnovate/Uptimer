@@ -39,8 +39,18 @@ export function DailyUptimeChart({ points, height = 220 }: DailyUptimeChartProps
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-        <XAxis dataKey="day" tickFormatter={formatDay} tick={{ fontSize: 12, fill: axisColor }} stroke={axisColor} />
-        <YAxis tick={{ fontSize: 12, fill: axisColor }} stroke={axisColor} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+        <XAxis
+          dataKey="day"
+          tickFormatter={formatDay}
+          tick={{ fontSize: 12, fill: axisColor }}
+          stroke={axisColor}
+        />
+        <YAxis
+          tick={{ fontSize: 12, fill: axisColor }}
+          stroke={axisColor}
+          domain={[0, 100]}
+          tickFormatter={(v) => `${v}%`}
+        />
         <Tooltip
           labelFormatter={(v) => new Date(Number(v) * 1000).toLocaleDateString()}
           formatter={(v: number, name) => [
@@ -54,8 +64,20 @@ export function DailyUptimeChart({ points, height = 220 }: DailyUptimeChartProps
             color: isDark ? '#f1f5f9' : '#0f172a',
           }}
         />
-        <Line type="monotone" dataKey="uptime_pct" stroke={uptimeColor} strokeWidth={2} dot={false} />
-        <Line type="monotone" dataKey="unknown_pct" stroke={unknownColor} strokeWidth={1} dot={false} />
+        <Line
+          type="monotone"
+          dataKey="uptime_pct"
+          stroke={uptimeColor}
+          strokeWidth={2}
+          dot={false}
+        />
+        <Line
+          type="monotone"
+          dataKey="unknown_pct"
+          stroke={unknownColor}
+          strokeWidth={1}
+          dot={false}
+        />
       </LineChart>
     </ResponsiveContainer>
   );

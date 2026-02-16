@@ -92,7 +92,13 @@ function groupDowntimeByContext(
       .map((d) => clipInterval(d, ctx))
       .filter((x): x is DayInterval => x !== null);
     if (overlappedDowntime.length === 0) continue;
-    groups.push({ start: ctx.start, end: ctx.end, kind: ctx.kind, label: ctx.label, downtime: overlappedDowntime });
+    groups.push({
+      start: ctx.start,
+      end: ctx.end,
+      kind: ctx.kind,
+      label: ctx.label,
+      downtime: overlappedDowntime,
+    });
   }
 
   const outside: DayInterval[] = [];
@@ -147,7 +153,9 @@ function buildContextIntervals(
     out.push({ start: clipped.start, end: clipped.end, kind: 'incident', label: it.title });
   }
 
-  return out.sort((a, b) => a.start - b.start || (a.kind === b.kind ? 0 : a.kind === 'maintenance' ? -1 : 1));
+  return out.sort(
+    (a, b) => a.start - b.start || (a.kind === b.kind ? 0 : a.kind === 'maintenance' ? -1 : 1),
+  );
 }
 
 // NOTE: Downtime is grouped separately for maintenance and incidents.
@@ -195,7 +203,9 @@ export function DayDowntimeModal({
 
   // Build a unified time-sorted list: context groups + outside intervals.
   const sortedEntries = useMemo(() => {
-    const entries: Array<{ kind: 'group'; group: ContextGroup } | { kind: 'outside'; interval: DayInterval }> = [];
+    const entries: Array<
+      { kind: 'group'; group: ContextGroup } | { kind: 'outside'; interval: DayInterval }
+    > = [];
     for (const g of allGrouped.groups) entries.push({ kind: 'group', group: g });
     for (const it of allGrouped.outside) entries.push({ kind: 'outside', interval: it });
     return entries.sort((a, b) => {
@@ -206,10 +216,7 @@ export function DayDowntimeModal({
   }, [allGrouped]);
 
   return (
-    <div
-      className={MODAL_OVERLAY_CLASS}
-      onClick={onClose}
-    >
+    <div className={MODAL_OVERLAY_CLASS} onClick={onClose}>
       <div
         className={`${MODAL_PANEL_CLASS} sm:max-w-xl p-5 sm:p-6`}
         onClick={(e) => e.stopPropagation()}
@@ -244,7 +251,8 @@ export function DayDowntimeModal({
                     className="flex items-center justify-between gap-4 p-3 rounded-lg bg-slate-50 dark:bg-slate-700/50"
                   >
                     <div className="text-sm text-slate-700 dark:text-slate-200">
-                      {formatClock(it.start, timeZone, locale)} – {formatClock(it.end, timeZone, locale)}
+                      {formatClock(it.start, timeZone, locale)} –{' '}
+                      {formatClock(it.end, timeZone, locale)}
                     </div>
                     <div className="text-sm font-medium text-slate-900 dark:text-slate-100 tabular-nums">
                       {formatSec(it.end - it.start)}
@@ -258,16 +266,25 @@ export function DayDowntimeModal({
               return (
                 <div
                   key={`group-${idx}`}
-                  className={isMaintenance
-                    ? 'p-3 rounded-lg border border-blue-200 dark:border-blue-500/30 bg-blue-50/40 dark:bg-blue-500/10'
-                    : 'p-3 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50/40 dark:bg-amber-500/10'}
+                  className={
+                    isMaintenance
+                      ? 'p-3 rounded-lg border border-blue-200 dark:border-blue-500/30 bg-blue-50/40 dark:bg-blue-500/10'
+                      : 'p-3 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50/40 dark:bg-amber-500/10'
+                  }
                 >
                   <div className="flex items-center justify-between gap-4 mb-2">
-                    <div className={`text-sm font-medium ${isMaintenance ? 'text-blue-700 dark:text-blue-300' : 'text-amber-800 dark:text-amber-200'}`}>
-                      {isMaintenance ? t('day_downtime.kind_maintenance') : t('day_downtime.kind_incident')}
+                    <div
+                      className={`text-sm font-medium ${isMaintenance ? 'text-blue-700 dark:text-blue-300' : 'text-amber-800 dark:text-amber-200'}`}
+                    >
+                      {isMaintenance
+                        ? t('day_downtime.kind_maintenance')
+                        : t('day_downtime.kind_incident')}
                     </div>
-                    <div className={`text-xs tabular-nums ${isMaintenance ? 'text-blue-700/80 dark:text-blue-300/80' : 'text-amber-800/80 dark:text-amber-200/80'}`}>
-                      {formatClock(g.start, timeZone, locale)} – {formatClock(g.end, timeZone, locale)}
+                    <div
+                      className={`text-xs tabular-nums ${isMaintenance ? 'text-blue-700/80 dark:text-blue-300/80' : 'text-amber-800/80 dark:text-amber-200/80'}`}
+                    >
+                      {formatClock(g.start, timeZone, locale)} –{' '}
+                      {formatClock(g.end, timeZone, locale)}
                     </div>
                   </div>
 
@@ -286,7 +303,8 @@ export function DayDowntimeModal({
                         className="flex items-center justify-between gap-4 p-3 rounded-lg bg-white/70 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700"
                       >
                         <div className="text-sm text-slate-700 dark:text-slate-200">
-                          {formatClock(it.start, timeZone, locale)} – {formatClock(it.end, timeZone, locale)}
+                          {formatClock(it.start, timeZone, locale)} –{' '}
+                          {formatClock(it.end, timeZone, locale)}
                         </div>
                         <div className="text-sm font-medium text-slate-900 dark:text-slate-100 tabular-nums">
                           {formatSec(it.end - it.start)}

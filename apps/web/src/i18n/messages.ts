@@ -1,6 +1,12 @@
 import type { SupportedLocale } from '../api/types';
 
-export const supportedLocales = ['en', 'zh-CN', 'zh-TW', 'ja', 'es'] as const satisfies readonly SupportedLocale[];
+export const supportedLocales = [
+  'en',
+  'zh-CN',
+  'zh-TW',
+  'ja',
+  'es',
+] as const satisfies readonly SupportedLocale[];
 
 export const localeLabels: Record<SupportedLocale, string> = {
   en: 'English',
@@ -149,7 +155,8 @@ const en = {
   'admin_login.error_invalid_token': 'Invalid token',
 
   'admin_settings.locale.title': 'UI Language',
-  'admin_settings.locale.help': 'Default is browser language. You can force a language for all visitors.',
+  'admin_settings.locale.help':
+    'Default is browser language. You can force a language for all visitors.',
   'admin_settings.locale.option.auto': 'Browser default',
   'admin_settings.locale.option.en': 'English',
   'admin_settings.locale.option.zh_cn': 'Simplified Chinese',
@@ -159,7 +166,8 @@ const en = {
   'admin_settings.locale.local_only':
     'Current API does not support saving locale yet. This browser will remember your choice locally.',
   'admin_settings.uptime_rating.title': 'Uptime Color Rating',
-  'admin_settings.uptime_rating.help': 'Controls the color thresholds for daily bars and 30d uptime.',
+  'admin_settings.uptime_rating.help':
+    'Controls the color thresholds for daily bars and 30d uptime.',
   'admin_settings.uptime_rating.level_1': 'Level 1 - Personal / Hobby',
   'admin_settings.uptime_rating.level_2': 'Level 2 - Basic Business / Content',
   'admin_settings.uptime_rating.level_3': 'Level 3 - Production / SaaS',
@@ -175,7 +183,8 @@ const en = {
   'admin_settings.retention.help': 'How many days to keep raw check results in D1.',
   'admin_settings.retention.days': 'Retention Days',
   'admin_settings.state_machine.title': 'State Machine Defaults',
-  'admin_settings.state_machine.help': 'Consecutive successes/failures required before status transitions.',
+  'admin_settings.state_machine.help':
+    'Consecutive successes/failures required before status transitions.',
   'admin_settings.state_machine.failures_to_down': 'Failures to mark DOWN',
   'admin_settings.state_machine.successes_to_up': 'Successes to mark UP',
   'admin_settings.defaults.title': 'Admin Defaults',
@@ -555,7 +564,8 @@ const zhCn: LocaleMessages = {
   'admin_settings.locale.option.zh_tw': '繁体中文',
   'admin_settings.locale.option.ja': '日语',
   'admin_settings.locale.option.es': '西班牙语',
-  'admin_settings.locale.local_only': '当前 API 暂不支持保存语言设置，本浏览器会在本地记住你的选择。',
+  'admin_settings.locale.local_only':
+    '当前 API 暂不支持保存语言设置，本浏览器会在本地记住你的选择。',
   'admin_settings.uptime_rating.title': '可用率颜色评级',
   'admin_settings.uptime_rating.help': '用于控制每日柱状图与 30 天可用率的颜色阈值。',
   'admin_settings.uptime_rating.level_1': '等级 1 - 个人 / 爱好项目',
@@ -738,13 +748,15 @@ const zhCn: LocaleMessages = {
   'notification_form.payload_type_json': 'JSON',
   'notification_form.payload_type_query': '查询参数',
   'notification_form.payload_type_urlencoded': 'x-www-form-urlencoded',
-  'notification_form.payload_type_help': '非 JSON 类型仅支持扁平 key/value 的 payload_template 对象。',
+  'notification_form.payload_type_help':
+    '非 JSON 类型仅支持扁平 key/value 的 payload_template 对象。',
   'notification_form.timeout_ms': '超时（毫秒）',
   'notification_form.headers_json': '请求头（JSON）',
   'notification_form.headers_placeholder': '{"Authorization":"Bearer $TOKEN"}',
   'notification_form.headers_help': '请求头值支持 {{message}} 这类变量。',
   'notification_form.message_template_optional': '消息模板（可选）',
-  'notification_form.message_template_placeholder': 'Monitor {{monitor.name}} changed to {{state.status}}\n$MSG',
+  'notification_form.message_template_placeholder':
+    'Monitor {{monitor.name}} changed to {{state.status}}\n$MSG',
   'notification_form.message_template_help':
     '可用变量包括：{{event}}、{{event_id}}、{{monitor.name}}、{{state.error}}、$MSG。',
   'notification_form.payload_template_optional': '负载模板（JSON，可选）',
@@ -759,7 +771,8 @@ const zhCn: LocaleMessages = {
   'notification_form.signing_secret_ref': '签名密钥引用',
   'notification_form.signing_secret_ref_placeholder': 'UPTIMER_WEBHOOK_SIGNING_SECRET',
   'notification_form.error_headers_invalid_json': '请求头 JSON 格式无效',
-  'notification_form.error_headers_must_object': '请求头 JSON 必须是对象（例如 {"Authorization":"Bearer ..."}）',
+  'notification_form.error_headers_must_object':
+    '请求头 JSON 必须是对象（例如 {"Authorization":"Bearer ..."}）',
   'notification_form.error_header_value_string': '请求头 "{key}" 的值必须是字符串',
   'notification_form.error_payload_template_invalid_json': '负载模板必须是合法 JSON',
 
@@ -1254,7 +1267,8 @@ const es: LocaleMessages = {
   'admin_login.error_invalid_token': 'Token invalido',
 
   'admin_settings.locale.title': 'Idioma de la interfaz',
-  'admin_settings.locale.help': 'Por defecto usa el idioma del navegador. Puedes forzar uno para todos los visitantes.',
+  'admin_settings.locale.help':
+    'Por defecto usa el idioma del navegador. Puedes forzar uno para todos los visitantes.',
   'admin_settings.locale.option.auto': 'Idioma del navegador',
   'admin_settings.locale.option.en': 'Ingles',
   'admin_settings.locale.option.zh_cn': 'Chino simplificado',

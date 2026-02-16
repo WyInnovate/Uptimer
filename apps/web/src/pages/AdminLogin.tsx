@@ -18,9 +18,7 @@ export function AdminLogin() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from =
-    (location.state as { from?: { pathname: string } })?.from?.pathname ||
-    ADMIN_PATH;
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || ADMIN_PATH;
 
   const statusQuery = useQuery({
     queryKey: ['status'],
@@ -61,12 +59,7 @@ export function AdminLogin() {
       <Card className="w-full max-w-md p-7 sm:p-8">
         <div className="mb-7 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
-            <svg
-              className="h-6 w-6"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"

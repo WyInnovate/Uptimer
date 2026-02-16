@@ -15,7 +15,6 @@ declare global {
   var __UPTIMER_INITIAL_STATUS__: StatusResponse | undefined;
 }
 
-
 const LS_PUBLIC_STATUS_KEY = 'uptimer_public_status_snapshot_v1';
 
 type PersistedStatusCache = {
@@ -58,7 +57,8 @@ const seedStatus = initialStatus ?? persistedStatus;
 if (seedStatus) {
   // Seed React Query so the status page can render instantly on slow networks.
   // Use the server-provided timestamp so we don't hide stale data.
-  const updatedAt = typeof seedStatus.generated_at === 'number' ? seedStatus.generated_at * 1000 : Date.now();
+  const updatedAt =
+    typeof seedStatus.generated_at === 'number' ? seedStatus.generated_at * 1000 : Date.now();
 
   queryClient.setQueryData<StatusResponse>(['status'], seedStatus, { updatedAt });
   writePersistedStatusCache(seedStatus);

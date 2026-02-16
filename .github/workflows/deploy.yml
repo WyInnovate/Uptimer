@@ -2,7 +2,7 @@ name: Deploy to Cloudflare
 
 on:
   push:
-    branches: ["main", "master"]
+    branches: ['main', 'master']
   workflow_dispatch:
 
 permissions:
@@ -31,11 +31,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: ".node-version"
+          node-version-file: '.node-version'
 
       - uses: pnpm/action-setup@v4
         with:
-          version: "10.8.1"
+          version: '10.8.1'
 
       - name: Resolve pnpm store path
         id: pnpm_store
@@ -303,7 +303,6 @@ jobs:
             echo "worker_url=$worker_url" >> "$GITHUB_OUTPUT"
           fi
 
-
       - name: Warm public status snapshot (best-effort)
         if: ${{ steps.deploy_worker.outputs.worker_url != '' }}
         shell: bash
@@ -373,7 +372,6 @@ jobs:
 
           echo "$output"
           exit "$code"
-
 
       - name: Upsert Pages secret for HTML preload (best-effort)
         shell: bash

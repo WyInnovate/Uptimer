@@ -41,8 +41,17 @@ export function DailyLatencyChart({ points, height = 220 }: DailyLatencyChartPro
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-        <XAxis dataKey="day" tickFormatter={formatDay} tick={{ fontSize: 12, fill: axisColor }} stroke={axisColor} />
-        <YAxis tick={{ fontSize: 12, fill: axisColor }} stroke={axisColor} tickFormatter={(v) => `${v}ms`} />
+        <XAxis
+          dataKey="day"
+          tickFormatter={formatDay}
+          tick={{ fontSize: 12, fill: axisColor }}
+          stroke={axisColor}
+        />
+        <YAxis
+          tick={{ fontSize: 12, fill: axisColor }}
+          stroke={axisColor}
+          tickFormatter={(v) => `${v}ms`}
+        />
         <Tooltip
           labelFormatter={(v) => new Date(Number(v) * 1000).toLocaleDateString()}
           formatter={(v: number, name) => [`${v}ms`, name === 'p50_latency_ms' ? 'P50' : 'P95']}
@@ -53,8 +62,20 @@ export function DailyLatencyChart({ points, height = 220 }: DailyLatencyChartPro
             color: isDark ? '#f1f5f9' : '#0f172a',
           }}
         />
-        <Line type="monotone" dataKey="p95_latency_ms" stroke={p95Color} strokeWidth={2} dot={false} />
-        <Line type="monotone" dataKey="p50_latency_ms" stroke={p50Color} strokeWidth={1} dot={false} />
+        <Line
+          type="monotone"
+          dataKey="p95_latency_ms"
+          stroke={p95Color}
+          strokeWidth={2}
+          dot={false}
+        />
+        <Line
+          type="monotone"
+          dataKey="p50_latency_ms"
+          stroke={p50Color}
+          strokeWidth={1}
+          dot={false}
+        />
       </LineChart>
     </ResponsiveContainer>
   );

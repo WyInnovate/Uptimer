@@ -35,7 +35,11 @@ function toCheckStatus(value: string | null): 'up' | 'down' | 'maintenance' | 'u
 const LOCK_LEASE_SECONDS = 10 * 60;
 const LOCK_PREFIX = 'analytics:daily-rollup:';
 
-export async function runDailyRollup(env: Env, controller: ScheduledController, _ctx: ExecutionContext): Promise<void> {
+export async function runDailyRollup(
+  env: Env,
+  controller: ScheduledController,
+  _ctx: ExecutionContext,
+): Promise<void> {
   const nowSec = Math.floor((controller.scheduledTime ?? Date.now()) / 1000);
   const todayStart = utcDayStart(nowSec);
   const targetDayStart = todayStart - 86400;
@@ -51,7 +55,7 @@ export async function runDailyRollup(env: Env, controller: ScheduledController, 
       FROM monitors
       WHERE created_at < ?1
       ORDER BY id
-    `
+    `,
   )
     .bind(targetDayEnd)
     .all<MonitorRow>();
@@ -79,7 +83,7 @@ export async function runDailyRollup(env: Env, controller: ScheduledController, 
           AND started_at < ?2
           AND (ended_at IS NULL OR ended_at > ?3)
         ORDER BY started_at
-      `
+      `,
     )
       .bind(m.id, rangeEnd, rangeStart)
       .all<OutageRow>();
@@ -91,7 +95,7 @@ export async function runDailyRollup(env: Env, controller: ScheduledController, 
           const end = Math.min(r.ended_at ?? rangeEnd, rangeEnd);
           return { start, end };
         })
-        .filter((it) => it.end > it.start)
+        .filter((it) => it.end > it.start),
     );
     const downtime_sec = sumIntervals(downtimeIntervals);
 
@@ -104,15 +108,21 @@ export async function runDailyRollup(env: Env, controller: ScheduledController, 
           AND checked_at >= ?2
           AND checked_at < ?3
         ORDER BY checked_at
-      `
+      `,
     )
       .bind(m.id, checksStart, rangeEnd)
       .all<CheckRow>();
 
-    const checks = (checkRows ?? []).map((r) => ({ checked_at: r.checked_at, status: toCheckStatus(r.status) }));
+    const checks = (checkRows ?? []).map((r) => ({
+      checked_at: r.checked_at,
+      status: toCheckStatus(r.status),
+    }));
 
     const unknownIntervals = buildUnknownIntervals(rangeStart, rangeEnd, m.interval_sec, checks);
-    const unknown_sec = Math.max(0, sumIntervals(unknownIntervals) - overlapSeconds(unknownIntervals, downtimeIntervals));
+    const unknown_sec = Math.max(
+      0,
+      sumIntervals(unknownIntervals) - overlapSeconds(unknownIntervals, downtimeIntervals),
+    );
 
     const unavailable_sec = Math.min(total_sec, downtime_sec + unknown_sec);
     const uptime_sec = Math.max(0, total_sec - unavailable_sec);
@@ -191,7 +201,7 @@ export async function runDailyRollup(env: Env, controller: ScheduledController, 
             p95_latency_ms = excluded.p95_latency_ms,
             latency_histogram_json = excluded.latency_histogram_json,
             updated_at = excluded.updated_at
-        `
+        `,
       ).bind(
         m.id,
         targetDayStart,
@@ -209,8 +219,8 @@ export async function runDailyRollup(env: Env, controller: ScheduledController, 
         p95_latency_ms,
         latency_histogram_json,
         now,
-        now
-      )
+        now,
+      ),
     );
 
     processed++;
@@ -225,5 +235,7 @@ export async function runDailyRollup(env: Env, controller: ScheduledController, 
     await env.DB.batch(statements);
   }
 
-  console.log(`daily-rollup: processed ${processed}/${monitors.length} monitors for day_start_at=${targetDayStart}`);
+  console.log(
+    `daily-rollup: processed ${processed}/${monitors.length} monitors for day_start_at=${targetDayStart}`,
+  );
 }

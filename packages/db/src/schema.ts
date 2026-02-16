@@ -1,5 +1,12 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 
 export type MonitorType = 'http' | 'tcp';
 export type MonitorStatus = 'up' | 'down' | 'maintenance' | 'paused' | 'unknown';
@@ -45,7 +52,7 @@ export const monitors = sqliteTable(
       t.sortOrder,
       t.id,
     ),
-  })
+  }),
 );
 
 export const monitorState = sqliteTable('monitor_state', {
@@ -74,7 +81,7 @@ export const checkResults = sqliteTable(
   },
   (t) => ({
     monitorTimeIdx: index('idx_check_results_monitor_time').on(t.monitorId, t.checkedAt),
-  })
+  }),
 );
 
 export const outages = sqliteTable(
@@ -89,7 +96,7 @@ export const outages = sqliteTable(
   },
   (t) => ({
     monitorStartIdx: index('idx_outages_monitor_start').on(t.monitorId, t.startedAt),
-  })
+  }),
 );
 
 export const incidents = sqliteTable('incidents', {
@@ -117,7 +124,7 @@ export const incidentUpdates = sqliteTable(
   },
   (t) => ({
     incidentTimeIdx: index('idx_incident_updates_incident_time').on(t.incidentId, t.createdAt),
-  })
+  }),
 );
 
 export const incidentMonitors = sqliteTable(
@@ -133,7 +140,7 @@ export const incidentMonitors = sqliteTable(
     pk: primaryKey({ columns: [t.incidentId, t.monitorId] }),
     monitorIdx: index('idx_incident_monitors_monitor').on(t.monitorId),
     incidentIdx: index('idx_incident_monitors_incident').on(t.incidentId),
-  })
+  }),
 );
 
 export const maintenanceWindows = sqliteTable('maintenance_windows', {
@@ -160,7 +167,7 @@ export const maintenanceWindowMonitors = sqliteTable(
     pk: primaryKey({ columns: [t.maintenanceWindowId, t.monitorId] }),
     monitorIdx: index('idx_maintenance_window_monitors_monitor').on(t.monitorId),
     windowIdx: index('idx_maintenance_window_monitors_window').on(t.maintenanceWindowId),
-  })
+  }),
 );
 
 export const notificationChannels = sqliteTable('notification_channels', {
@@ -189,7 +196,7 @@ export const notificationDeliveries = sqliteTable(
   },
   (t) => ({
     eventChannelUniq: uniqueIndex('uq_notification_event_channel').on(t.eventKey, t.channelId),
-  })
+  }),
 );
 
 export const settings = sqliteTable('settings', {
@@ -244,5 +251,5 @@ export const monitorDailyRollups = sqliteTable(
     pk: primaryKey({ columns: [t.monitorId, t.dayStartAt] }),
     dayIdx: index('idx_monitor_daily_rollups_day').on(t.dayStartAt),
     monitorDayIdx: index('idx_monitor_daily_rollups_monitor_day').on(t.monitorId, t.dayStartAt),
-  })
+  }),
 );

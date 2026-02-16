@@ -13,7 +13,11 @@ const buckets = new Map<string, Bucket>();
 
 const MAX_BUCKETS = 5000;
 
-function parsePositiveInt(raw: unknown, fallback: number, opts: { min: number; max: number }): number {
+function parsePositiveInt(
+  raw: unknown,
+  fallback: number,
+  opts: { min: number; max: number },
+): number {
   if (typeof raw !== 'string' || raw.trim().length === 0) return fallback;
   const n = Number.parseInt(raw, 10);
   if (!Number.isFinite(n)) return fallback;
@@ -37,7 +41,10 @@ function getClientIp(c: { req: { header: (name: string) => string | undefined } 
 
 export const requireAdminRateLimit = createMiddleware<{ Bindings: Env }>(async (c, next) => {
   const max = parsePositiveInt(c.env.ADMIN_RATE_LIMIT_MAX, 60, { min: 1, max: 10_000 });
-  const windowSec = parsePositiveInt(c.env.ADMIN_RATE_LIMIT_WINDOW_SEC, 60, { min: 1, max: 86_400 });
+  const windowSec = parsePositiveInt(c.env.ADMIN_RATE_LIMIT_WINDOW_SEC, 60, {
+    min: 1,
+    max: 86_400,
+  });
 
   const ip = getClientIp(c);
   const key = `admin:${ip}`;

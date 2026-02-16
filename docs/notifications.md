@@ -10,15 +10,15 @@
 
 Uptimer 的通知系统目标：
 
-- 当「监控状态发生关键变化」（UP->DOWN、DOWN->UP）或「事件/公告变化」（incident.*）时，向外部系统（Webhook）发送通知。
+- 当「监控状态发生关键变化」（UP->DOWN、DOWN->UP）或「事件/公告变化」（incident.\*）时，向外部系统（Webhook）发送通知。
 - 支持每个渠道独立配置：请求方法、超时、headers、payload 格式、payload 模板（含魔法变量）、事件过滤（enabled_events）、可选签名。
 - 支持幂等去重：同一事件对同一 channel 只会发送一次（以 `notification_deliveries` 唯一键实现）。
 
 核心流程（简化）：
 
-1) 系统产生事件（eventType + eventKey + payload）
-2) 找到所有 active webhook channels
-3) 对每个 channel：
+1. 系统产生事件（eventType + eventKey + payload）
+2. 找到所有 active webhook channels
+3. 对每个 channel：
    - 事件过滤（enabled_events）
    - 先“占坑”写入 `notification_deliveries`（幂等 claim）
    - 渲染模板（message_template/payload_template/header template）
@@ -224,8 +224,8 @@ Uptimer 支持在以下位置使用模板：
 
 如果你的接收端强依赖数字类型，建议：
 
-1) 使用默认 payload（不设置 payload_template），或
-2) 在接收端做类型转换。
+1. 使用默认 payload（不设置 payload_template），或
+2. 在接收端做类型转换。
 
 ---
 
@@ -274,17 +274,14 @@ Uptimer 支持在以下位置使用模板：
 一个接收端校验（Node.js 伪码）：
 
 ```js
-import crypto from "node:crypto";
+import crypto from 'node:crypto';
 
 function verify(req, secret) {
-  const ts = req.headers["x-uptimer-timestamp"];
-  const sig = req.headers["x-uptimer-signature"]; // sha256=...
-  const rawBody = req.rawBody ?? "";
+  const ts = req.headers['x-uptimer-timestamp'];
+  const sig = req.headers['x-uptimer-signature']; // sha256=...
+  const rawBody = req.rawBody ?? '';
 
-  const expected = crypto
-    .createHmac("sha256", secret)
-    .update(`${ts}.${rawBody}`)
-    .digest("hex");
+  const expected = crypto.createHmac('sha256', secret).update(`${ts}.${rawBody}`).digest('hex');
 
   return sig === `sha256=${expected}`;
 }
@@ -412,4 +409,3 @@ wrangler d1 execute uptimer --local --command="SELECT * FROM notification_delive
 - 模板系统：`apps/worker/src/notify/template.ts`
 - Schema（config_json 校验）：`packages/db/src/json.ts`
 - Test endpoint：`apps/worker/src/routes/admin.ts`
-

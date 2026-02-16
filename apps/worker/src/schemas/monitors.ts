@@ -29,7 +29,8 @@ export const createMonitorInputSchema = z
     is_active: z.boolean().optional(),
   })
   .superRefine((val, ctx) => {
-    const err = val.type === 'http' ? validateHttpTarget(val.target) : validateTcpTarget(val.target);
+    const err =
+      val.type === 'http' ? validateHttpTarget(val.target) : validateTcpTarget(val.target);
     if (err) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: err, path: ['target'] });
     }

@@ -20,6 +20,12 @@ function safeJsonForInlineScript(value) {
   return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 
+function normalizeSnapshotText(value, fallback) {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
+}
+
 function computeCacheControl(ageSeconds) {
   const remaining = Math.max(0, SNAPSHOT_MAX_AGE_SECONDS - ageSeconds);
   const maxAge = Math.min(PREFERRED_MAX_AGE_SECONDS, remaining);
@@ -63,6 +69,79 @@ function statusBadgeClass(status) {
     default:
       return 'bg-slate-50 text-slate-600 ring-slate-500/20 dark:bg-slate-500/10 dark:text-slate-400 dark:ring-slate-400/20';
   }
+}
+
+function upsertHeadTag(html, pattern, tag) {
+  if (pattern.test(html)) {
+    return html.replace(pattern, tag);
+  }
+  return html.replace('</head>', `  ${tag}\n</head>`);
+}
+
+function injectStatusMetaTags(html, snapshot, url) {
+  const siteTitle = normalizeSnapshotText(snapshot?.site_title, 'Uptimer');
+  const fallbackDescription = normalizeSnapshotText(
+    snapshot?.banner?.title,
+    'Real-time status and incident updates.',
+  );
+  const siteDescription = normalizeSnapshotText(snapshot?.site_description, fallbackDescription)
+    .replace(/\s+/g, ' ')
+    .trim();
+  const pageUrl = new URL('/', url).toString();
+
+  const escapedTitle = escapeHtml(siteTitle);
+  const escapedDescription = escapeHtml(siteDescription);
+  const escapedUrl = escapeHtml(pageUrl);
+
+  let injected = html;
+  injected = upsertHeadTag(injected, /<title>[^<]*<\/title>/i, `<title>${escapedTitle}</title>`);
+  injected = upsertHeadTag(
+    injected,
+    /<meta[^>]+name=["']description["'][^>]*>/i,
+    `<meta name="description" content="${escapedDescription}" />`,
+  );
+  injected = upsertHeadTag(
+    injected,
+    /<meta[^>]+property=["']og:type["'][^>]*>/i,
+    '<meta property="og:type" content="website" />',
+  );
+  injected = upsertHeadTag(
+    injected,
+    /<meta[^>]+property=["']og:title["'][^>]*>/i,
+    `<meta property="og:title" content="${escapedTitle}" />`,
+  );
+  injected = upsertHeadTag(
+    injected,
+    /<meta[^>]+property=["']og:description["'][^>]*>/i,
+    `<meta property="og:description" content="${escapedDescription}" />`,
+  );
+  injected = upsertHeadTag(
+    injected,
+    /<meta[^>]+property=["']og:site_name["'][^>]*>/i,
+    `<meta property="og:site_name" content="${escapedTitle}" />`,
+  );
+  injected = upsertHeadTag(
+    injected,
+    /<meta[^>]+property=["']og:url["'][^>]*>/i,
+    `<meta property="og:url" content="${escapedUrl}" />`,
+  );
+  injected = upsertHeadTag(
+    injected,
+    /<meta[^>]+name=["']twitter:card["'][^>]*>/i,
+    '<meta name="twitter:card" content="summary" />',
+  );
+  injected = upsertHeadTag(
+    injected,
+    /<meta[^>]+name=["']twitter:title["'][^>]*>/i,
+    `<meta name="twitter:title" content="${escapedTitle}" />`,
+  );
+  injected = upsertHeadTag(
+    injected,
+    /<meta[^>]+name=["']twitter:description["'][^>]*>/i,
+    `<meta name="twitter:description" content="${escapedDescription}" />`,
+  );
+
+  return injected;
 }
 
 function renderPreload(snapshot) {
@@ -216,6 +295,8 @@ export default {
         '<div id="root"></div>',
         `<div id="uptimer-preload">${renderPreload(snapshot)}</div><div id="root"></div>`,
       );
+
+      injected = injectStatusMetaTags(injected, snapshot, url);
 
       injected = injected.replace(
         '</head>',

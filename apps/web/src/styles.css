@@ -36,8 +36,8 @@
 
   /* Layering */
   --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 20px -12px rgba(15, 23, 42, 0.22);
-  --shadow-card-hover: 0 6px 16px -8px rgba(15, 23, 42, 0.18),
-    0 14px 36px -18px rgba(15, 23, 42, 0.28);
+  --shadow-card-hover:
+    0 6px 16px -8px rgba(15, 23, 42, 0.18), 0 14px 36px -18px rgba(15, 23, 42, 0.28);
   --shadow-panel: 0 8px 28px -20px rgba(15, 23, 42, 0.35);
   --overlay-bg: rgba(15, 23, 42, 0.62);
 }
@@ -65,7 +65,8 @@
 
   --focus-ring: 0 0 0 3px rgba(96, 165, 250, 0.3);
   --shadow-card: 0 2px 10px -6px rgba(2, 6, 23, 0.65), 0 12px 28px -16px rgba(2, 6, 23, 0.72);
-  --shadow-card-hover: 0 8px 24px -14px rgba(2, 6, 23, 0.78), 0 20px 40px -24px rgba(2, 6, 23, 0.88);
+  --shadow-card-hover:
+    0 8px 24px -14px rgba(2, 6, 23, 0.78), 0 20px 40px -24px rgba(2, 6, 23, 0.88);
   --shadow-panel: 0 10px 30px -18px rgba(2, 6, 23, 0.9);
   --overlay-bg: rgba(2, 6, 23, 0.76);
 }
@@ -207,7 +208,9 @@ a {
 }
 
 .ui-panel-hover {
-  transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+  transition:
+    transform 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1),
     border-color 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -226,7 +229,10 @@ a {
   color: var(--color-text-primary);
   padding: 0.7rem 0.85rem;
   font-size: 0.9375rem;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background-color 0.16s ease;
 }
 
 .ui-input::placeholder,

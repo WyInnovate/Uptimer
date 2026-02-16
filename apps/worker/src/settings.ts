@@ -45,7 +45,10 @@ const DEFAULTS: SettingsResponse['settings'] = {
 
 type SettingsRow = { key: string; value: string };
 
-function parseIntSetting(raw: string | undefined, opts: { min: number; max: number }): number | null {
+function parseIntSetting(
+  raw: string | undefined,
+  opts: { min: number; max: number },
+): number | null {
   if (raw === undefined) return null;
   const n = Number.parseInt(raw, 10);
   if (!Number.isFinite(n)) return null;
@@ -53,7 +56,10 @@ function parseIntSetting(raw: string | undefined, opts: { min: number; max: numb
   return n;
 }
 
-function parseStringSetting(raw: string | undefined, opts: { max: number; allowEmpty?: boolean }): string | null {
+function parseStringSetting(
+  raw: string | undefined,
+  opts: { max: number; allowEmpty?: boolean },
+): string | null {
   if (raw === undefined) return null;
   const s = raw;
   if (!opts.allowEmpty && s.length === 0) return null;
@@ -61,7 +67,10 @@ function parseStringSetting(raw: string | undefined, opts: { max: number; allowE
   return s;
 }
 
-function parseEnumSetting<T extends string>(raw: string | undefined, allowed: readonly T[]): T | null {
+function parseEnumSetting<T extends string>(
+  raw: string | undefined,
+  allowed: readonly T[],
+): T | null {
   if (raw === undefined) return null;
   return (allowed as readonly string[]).includes(raw) ? (raw as T) : null;
 }
@@ -88,11 +97,19 @@ export async function readSettings(db: D1Database): Promise<SettingsResponse['se
 
   const site_title = parseStringSetting(map.get('site_title'), { max: 100 }) ?? DEFAULTS.site_title;
   const site_description =
-    parseStringSetting(map.get('site_description'), { max: 500, allowEmpty: true }) ?? DEFAULTS.site_description;
+    parseStringSetting(map.get('site_description'), { max: 500, allowEmpty: true }) ??
+    DEFAULTS.site_description;
   const site_locale =
-    parseEnumSetting(map.get('site_locale'), ['auto', 'en', 'zh-CN', 'zh-TW', 'ja', 'es'] as const) ??
-    DEFAULTS.site_locale;
-  const site_timezone = parseStringSetting(map.get('site_timezone'), { max: 64 }) ?? DEFAULTS.site_timezone;
+    parseEnumSetting(map.get('site_locale'), [
+      'auto',
+      'en',
+      'zh-CN',
+      'zh-TW',
+      'ja',
+      'es',
+    ] as const) ?? DEFAULTS.site_locale;
+  const site_timezone =
+    parseStringSetting(map.get('site_timezone'), { max: 64 }) ?? DEFAULTS.site_timezone;
 
   const retention_check_results_days =
     parseIntSetting(map.get('retention_check_results_days'), { min: 1, max: 365 }) ??
@@ -109,16 +126,17 @@ export async function readSettings(db: D1Database): Promise<SettingsResponse['se
     parseEnumSetting(map.get('admin_default_overview_range'), ['24h', '7d'] as const) ??
     DEFAULTS.admin_default_overview_range;
   const admin_default_monitor_range =
-    parseEnumSetting(map.get('admin_default_monitor_range'), ['24h', '7d', '30d', '90d'] as const) ??
-    DEFAULTS.admin_default_monitor_range;
+    parseEnumSetting(map.get('admin_default_monitor_range'), [
+      '24h',
+      '7d',
+      '30d',
+      '90d',
+    ] as const) ?? DEFAULTS.admin_default_monitor_range;
 
-  const uptime_rating_level =
-    (parseIntSetting(map.get('uptime_rating_level'), { min: 1, max: 5 }) ?? DEFAULTS.uptime_rating_level) as
-      | 1
-      | 2
-      | 3
-      | 4
-      | 5;
+  const uptime_rating_level = (parseIntSetting(map.get('uptime_rating_level'), {
+    min: 1,
+    max: 5,
+  }) ?? DEFAULTS.uptime_rating_level) as 1 | 2 | 3 | 4 | 5;
 
   return {
     site_title,

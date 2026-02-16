@@ -1,5 +1,9 @@
 import { useMemo, useState } from 'react';
-import type { CreateNotificationChannelInput, NotificationChannel, WebhookChannelConfig } from '../api/types';
+import type {
+  CreateNotificationChannelInput,
+  NotificationChannel,
+  WebhookChannelConfig,
+} from '../api/types';
 import { useI18n } from '../app/I18nContext';
 import {
   Button,
@@ -58,7 +62,13 @@ function toPayloadType(value: string): NonNullable<WebhookChannelConfig['payload
   }
 }
 
-export function NotificationChannelForm({ channel, onSubmit, onCancel, isLoading, error }: NotificationChannelFormProps) {
+export function NotificationChannelForm({
+  channel,
+  onSubmit,
+  onCancel,
+  isLoading,
+  error,
+}: NotificationChannelFormProps) {
   const { t } = useI18n();
   const [name, setName] = useState(channel?.name ?? '');
   const [url, setUrl] = useState(channel?.config_json.url ?? '');
@@ -71,9 +81,13 @@ export function NotificationChannelForm({ channel, onSubmit, onCancel, isLoading
     channel?.config_json.payload_type ?? 'json',
   );
 
-  const [headersJson, setHeadersJson] = useState(safeJsonStringify(channel?.config_json.headers ?? {}));
+  const [headersJson, setHeadersJson] = useState(
+    safeJsonStringify(channel?.config_json.headers ?? {}),
+  );
 
-  const [messageTemplate, setMessageTemplate] = useState(channel?.config_json.message_template ?? '');
+  const [messageTemplate, setMessageTemplate] = useState(
+    channel?.config_json.message_template ?? '',
+  );
   const [payloadTemplateJson, setPayloadTemplateJson] = useState(
     channel?.config_json.payload_template !== undefined
       ? safeJsonStringify(channel.config_json.payload_template)
@@ -84,8 +98,12 @@ export function NotificationChannelForm({ channel, onSubmit, onCancel, isLoading
     channel?.config_json.enabled_events ?? [],
   );
 
-  const [signingEnabled, setSigningEnabled] = useState<boolean>(channel?.config_json.signing?.enabled ?? false);
-  const [signingSecretRef, setSigningSecretRef] = useState<string>(channel?.config_json.signing?.secret_ref ?? '');
+  const [signingEnabled, setSigningEnabled] = useState<boolean>(
+    channel?.config_json.signing?.enabled ?? false,
+  );
+  const [signingSecretRef, setSigningSecretRef] = useState<string>(
+    channel?.config_json.signing?.secret_ref ?? '',
+  );
 
   const headersParse = useMemo(() => {
     const trimmed = headersJson.trim();
@@ -107,7 +125,10 @@ export function NotificationChannelForm({ channel, onSubmit, onCancel, isLoading
 
     for (const [k, vv] of Object.entries(parsed as Record<string, unknown>)) {
       if (typeof vv !== 'string') {
-        return { ok: false as const, error: t('notification_form.error_header_value_string', { key: k }) };
+        return {
+          ok: false as const,
+          error: t('notification_form.error_header_value_string', { key: k }),
+        };
       }
     }
 
@@ -122,7 +143,10 @@ export function NotificationChannelForm({ channel, onSubmit, onCancel, isLoading
     try {
       parsed = JSON.parse(trimmed) as unknown;
     } catch {
-      return { ok: false as const, error: t('notification_form.error_payload_template_invalid_json') };
+      return {
+        ok: false as const,
+        error: t('notification_form.error_payload_template_invalid_json'),
+      };
     }
 
     return { ok: true as const, value: parsed };
@@ -210,7 +234,11 @@ export function NotificationChannelForm({ channel, onSubmit, onCancel, isLoading
 
       <div>
         <label className={labelClass}>{t('notification_form.method')}</label>
-        <select value={method} onChange={(e) => setMethod(toMethod(e.target.value))} className={selectClass}>
+        <select
+          value={method}
+          onChange={(e) => setMethod(toMethod(e.target.value))}
+          className={selectClass}
+        >
           <option value="POST">POST</option>
           <option value="PUT">PUT</option>
           <option value="PATCH">PATCH</option>
@@ -229,7 +257,9 @@ export function NotificationChannelForm({ channel, onSubmit, onCancel, isLoading
         >
           <option value="json">{t('notification_form.payload_type_json')}</option>
           <option value="param">{t('notification_form.payload_type_query')}</option>
-          <option value="x-www-form-urlencoded">{t('notification_form.payload_type_urlencoded')}</option>
+          <option value="x-www-form-urlencoded">
+            {t('notification_form.payload_type_urlencoded')}
+          </option>
         </select>
         <div className={FIELD_HELP_CLASS}>{t('notification_form.payload_type_help')}</div>
       </div>
@@ -287,7 +317,9 @@ export function NotificationChannelForm({ channel, onSubmit, onCancel, isLoading
           }
         />
         {!payloadTemplateParse.ok && (
-          <div className="mt-1 text-xs text-red-600 dark:text-red-400">{payloadTemplateParse.error}</div>
+          <div className="mt-1 text-xs text-red-600 dark:text-red-400">
+            {payloadTemplateParse.error}
+          </div>
         )}
         <div className={FIELD_HELP_CLASS}>{t('notification_form.payload_template_help')}</div>
       </div>

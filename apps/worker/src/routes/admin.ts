@@ -25,7 +25,11 @@ import { refreshPublicStatusSnapshot } from '../snapshots';
 import { runHttpCheck } from '../monitor/http';
 import { validateHttpTarget, validateTcpTarget } from '../monitor/targets';
 import { runTcpCheck } from '../monitor/tcp';
-import { dispatchWebhookToChannelLegacy, dispatchWebhookToChannels, type WebhookChannel } from '../notify/webhook';
+import {
+  dispatchWebhookToChannelLegacy,
+  dispatchWebhookToChannels,
+  type WebhookChannel,
+} from '../notify/webhook';
 import { adminAnalyticsRoutes } from './admin-analytics';
 import { adminExportsRoutes } from './admin-exports';
 import { adminSettingsRoutes } from './admin-settings';
@@ -87,7 +91,10 @@ function normalizeMonitorGroupName(groupName: string | null | undefined): string
   return trimmed.length > 0 ? trimmed : null;
 }
 
-async function findGroupSortOrder(db: D1Database, groupName: string | null): Promise<number | null> {
+async function findGroupSortOrder(
+  db: D1Database,
+  groupName: string | null,
+): Promise<number | null> {
   const sql =
     groupName === null
       ? `
@@ -251,14 +258,26 @@ function monitorRowToApi(
 }
 
 adminRoutes.get('/monitors', async (c) => {
-  const limit = z.coerce.number().int().min(1).max(200).optional().default(50).parse(c.req.query('limit'));
+  const limit = z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(200)
+    .optional()
+    .default(50)
+    .parse(c.req.query('limit'));
   const db = getDb(c.env);
 
   const rows = await db
     .select({ monitor: monitors, state: monitorState })
     .from(monitors)
     .leftJoin(monitorState, eq(monitorState.monitorId, monitors.id))
-    .orderBy(asc(monitors.groupSortOrder), asc(monitors.groupName), asc(monitors.sortOrder), asc(monitors.id))
+    .orderBy(
+      asc(monitors.groupSortOrder),
+      asc(monitors.groupName),
+      asc(monitors.sortOrder),
+      asc(monitors.id),
+    )
     .limit(limit)
     .all();
 
@@ -274,7 +293,9 @@ adminRoutes.post('/monitors/groups/reorder', async (c) => {
 
   const groups = normalizeMonitorGroupReorderEntries(input.groups);
   const { sql, binds } = buildGroupReorderUpdate(groups, now);
-  const result = await c.env.DB.prepare(sql).bind(...binds).run();
+  const result = await c.env.DB.prepare(sql)
+    .bind(...binds)
+    .run();
 
   queuePublicStatusSnapshotRefresh(c);
 
@@ -294,19 +315,18 @@ adminRoutes.post('/monitors/groups/assign', async (c) => {
   const monitorIds = [...new Set(input.monitor_ids)];
   const targetGroupName = normalizeMonitorGroupName(input.group_name);
   const targetGroupSortOrder =
-    input.group_sort_order ?? ((await findGroupSortOrder(c.env.DB, targetGroupName)) ?? 0);
+    input.group_sort_order ?? (await findGroupSortOrder(c.env.DB, targetGroupName)) ?? 0;
 
   const placeholders = monitorIds.map(() => '?').join(', ');
-  const result = await c.env.DB
-    .prepare(
-      `
+  const result = await c.env.DB.prepare(
+    `
       UPDATE monitors
       SET group_name = ?,
           group_sort_order = ?,
           updated_at = ?
       WHERE id IN (${placeholders})
     `,
-    )
+  )
     .bind(targetGroupName, targetGroupSortOrder, now, ...monitorIds)
     .run();
 
@@ -324,8 +344,7 @@ adminRoutes.post('/monitors/groups/assign', async (c) => {
 });
 
 adminRoutes.get('/settings/uptime-rating', async (c) => {
-  const row = await c.env.DB
-    .prepare('SELECT value FROM settings WHERE key = ?1')
+  const row = await c.env.DB.prepare('SELECT value FROM settings WHERE key = ?1')
     .bind('uptime_rating_level')
     .first<{ value: string }>();
 
@@ -340,18 +359,15 @@ adminRoutes.put('/settings/uptime-rating', async (c) => {
     throw new AppError(400, 'INVALID_ARGUMENT', 'Invalid JSON body');
   });
 
-  const input = z
-    .object({ uptime_rating_level: z.number().int().min(1).max(5) })
-    .parse(rawBody);
+  const input = z.object({ uptime_rating_level: z.number().int().min(1).max(5) }).parse(rawBody);
 
-  await c.env.DB
-    .prepare(
-      `
+  await c.env.DB.prepare(
+    `
       INSERT INTO settings (key, value)
       VALUES (?1, ?2)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value
     `,
-    )
+  )
     .bind('uptime_rating_level', String(input.uptime_rating_level))
     .run();
 
@@ -370,8 +386,7 @@ adminRoutes.post('/monitors', async (c) => {
   const now = Math.floor(Date.now() / 1000);
   const groupName = normalizeMonitorGroupName(input.group_name);
   const groupSortOrder =
-    input.group_sort_order ??
-    ((await findGroupSortOrder(c.env.DB, groupName)) ?? 0);
+    input.group_sort_order ?? (await findGroupSortOrder(c.env.DB, groupName)) ?? 0;
 
   const inserted = await db
     .insert(monitors)
@@ -397,7 +412,8 @@ adminRoutes.post('/monitors', async (c) => {
             })
           : null,
       responseKeyword: input.type === 'http' ? (input.response_keyword ?? null) : null,
-      responseForbiddenKeyword: input.type === 'http' ? (input.response_forbidden_keyword ?? null) : null,
+      responseForbiddenKeyword:
+        input.type === 'http' ? (input.response_forbidden_keyword ?? null) : null,
 
       groupName,
       groupSortOrder,
@@ -454,14 +470,20 @@ adminRoutes.patch('/monitors/:id', async (c) => {
     ] as const;
     for (const field of httpFields) {
       if (input[field] !== undefined) {
-        throw new AppError(400, 'INVALID_ARGUMENT', 'http_* fields are not allowed for tcp monitors');
+        throw new AppError(
+          400,
+          'INVALID_ARGUMENT',
+          'http_* fields are not allowed for tcp monitors',
+        );
       }
     }
   }
 
   const now = Math.floor(Date.now() / 1000);
   const nextGroupName =
-    input.group_name !== undefined ? normalizeMonitorGroupName(input.group_name) : normalizeMonitorGroupName(existing.groupName);
+    input.group_name !== undefined
+      ? normalizeMonitorGroupName(input.group_name)
+      : normalizeMonitorGroupName(existing.groupName);
   const nextGroupSortOrder =
     input.group_sort_order !== undefined
       ? input.group_sort_order
@@ -488,7 +510,8 @@ adminRoutes.patch('/monitors/:id', async (c) => {
               field: 'expected_status_json',
             })
           : existing.expectedStatusJson,
-      responseKeyword: input.response_keyword !== undefined ? input.response_keyword : existing.responseKeyword,
+      responseKeyword:
+        input.response_keyword !== undefined ? input.response_keyword : existing.responseKeyword,
       responseForbiddenKeyword:
         input.response_forbidden_keyword !== undefined
           ? input.response_forbidden_keyword
@@ -560,7 +583,9 @@ adminRoutes.post('/monitors/:id/test', async (c) => {
       url: monitor.target,
       timeoutMs: monitor.timeoutMs,
       method: (monitor.httpMethod as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD') ?? 'GET',
-      headers: parseDbJsonNullable(httpHeadersJsonSchema, monitor.httpHeadersJson, { field: 'http_headers_json' }),
+      headers: parseDbJsonNullable(httpHeadersJsonSchema, monitor.httpHeadersJson, {
+        field: 'http_headers_json',
+      }),
       body: monitor.httpBody,
       expectedStatus: parseDbJsonNullable(expectedStatusJsonSchema, monitor.expectedStatusJson, {
         field: 'expected_status_json',
@@ -602,9 +627,8 @@ adminRoutes.post('/monitors/:id/pause', async (c) => {
   // Keep the state row present so public/admin payloads can reliably surface `paused`.
   // Reset streaks to avoid flapping thresholds being affected when the monitor resumes.
   await c.env.DB.batch([
-    c.env.DB
-      .prepare(
-        `
+    c.env.DB.prepare(
+      `
         INSERT INTO monitor_state (
           monitor_id,
           status,
@@ -621,20 +645,17 @@ adminRoutes.post('/monitors/:id/pause', async (c) => {
           consecutive_failures = 0,
           consecutive_successes = 0
       `,
-      )
-      .bind(id, now),
+    ).bind(id, now),
 
     // If the monitor was DOWN when it got paused, the scheduler will no longer run to close the outage.
     // Close any open outage interval so analytics/exports don't keep accumulating downtime indefinitely.
-    c.env.DB
-      .prepare(
-        `
+    c.env.DB.prepare(
+      `
         UPDATE outages
         SET ended_at = ?1
         WHERE monitor_id = ?2 AND ended_at IS NULL
       `,
-      )
-      .bind(now, id),
+    ).bind(now, id),
   ]);
 
   const state = await db.select().from(monitorState).where(eq(monitorState.monitorId, id)).get();
@@ -657,9 +678,8 @@ adminRoutes.post('/monitors/:id/resume', async (c) => {
   const now = Math.floor(Date.now() / 1000);
 
   // Resume by returning to UNKNOWN so the scheduler will pick it up on the next tick.
-  await c.env.DB
-    .prepare(
-      `
+  await c.env.DB.prepare(
+    `
       INSERT INTO monitor_state (
         monitor_id,
         status,
@@ -676,7 +696,7 @@ adminRoutes.post('/monitors/:id/resume', async (c) => {
         consecutive_failures = 0,
         consecutive_successes = 0
     `,
-    )
+  )
     .bind(id, now)
     .run();
 
@@ -708,7 +728,14 @@ function notificationChannelRowToApi(row: NotificationChannelRow) {
 }
 
 adminRoutes.get('/notification-channels', async (c) => {
-  const limit = z.coerce.number().int().min(1).max(200).optional().default(50).parse(c.req.query('limit'));
+  const limit = z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(200)
+    .optional()
+    .default(50)
+    .parse(c.req.query('limit'));
 
   const { results } = await c.env.DB.prepare(
     `
@@ -716,7 +743,7 @@ adminRoutes.get('/notification-channels', async (c) => {
       FROM notification_channels
       ORDER BY id
       LIMIT ?1
-    `
+    `,
   )
     .bind(limit)
     .all<NotificationChannelRow>();
@@ -732,14 +759,16 @@ adminRoutes.post('/notification-channels', async (c) => {
 
   const now = Math.floor(Date.now() / 1000);
   const isActive = input.is_active ?? true;
-  const configJson = serializeDbJson(webhookChannelConfigSchema, input.config_json, { field: 'config_json' });
+  const configJson = serializeDbJson(webhookChannelConfigSchema, input.config_json, {
+    field: 'config_json',
+  });
 
   const row = await c.env.DB.prepare(
     `
       INSERT INTO notification_channels (name, type, config_json, is_active, created_at)
       VALUES (?1, ?2, ?3, ?4, ?5)
       RETURNING id, name, type, config_json, is_active, created_at
-    `
+    `,
   )
     .bind(input.name, input.type, configJson, isActive ? 1 : 0, now)
     .first<NotificationChannelRow>();
@@ -764,7 +793,7 @@ adminRoutes.patch('/notification-channels/:id', async (c) => {
       SELECT id, name, type, config_json, is_active, created_at
       FROM notification_channels
       WHERE id = ?1
-    `
+    `,
   )
     .bind(id)
     .first<NotificationChannelRow>();
@@ -774,7 +803,8 @@ adminRoutes.patch('/notification-channels/:id', async (c) => {
   }
 
   const nextName = input.name ?? existing.name;
-  const nextIsActive = input.is_active !== undefined ? (input.is_active ? 1 : 0) : existing.is_active;
+  const nextIsActive =
+    input.is_active !== undefined ? (input.is_active ? 1 : 0) : existing.is_active;
   const nextConfigJson =
     input.config_json !== undefined
       ? serializeDbJson(webhookChannelConfigSchema, input.config_json, { field: 'config_json' })
@@ -786,7 +816,7 @@ adminRoutes.patch('/notification-channels/:id', async (c) => {
       SET name = ?1, config_json = ?2, is_active = ?3
       WHERE id = ?4
       RETURNING id, name, type, config_json, is_active, created_at
-    `
+    `,
   )
     .bind(nextName, nextConfigJson, nextIsActive, id)
     .first<NotificationChannelRow>();
@@ -806,7 +836,7 @@ adminRoutes.delete('/notification-channels/:id', async (c) => {
       SELECT id
       FROM notification_channels
       WHERE id = ?1
-    `
+    `,
   )
     .bind(id)
     .first<{ id: number }>();
@@ -821,13 +851,13 @@ adminRoutes.delete('/notification-channels/:id', async (c) => {
       `
         DELETE FROM notification_deliveries
         WHERE channel_id = ?1
-      `
+      `,
     ).bind(id),
     c.env.DB.prepare(
       `
         DELETE FROM notification_channels
         WHERE id = ?1
-      `
+      `,
     ).bind(id),
   ]);
 
@@ -855,7 +885,7 @@ async function listActiveWebhookChannels(db: D1Database): Promise<WebhookChannel
       FROM notification_channels
       WHERE is_active = 1 AND type = 'webhook'
       ORDER BY id
-    `
+    `,
     )
     .all<ActiveWebhookChannelRow>();
 
@@ -881,7 +911,11 @@ function normalizeIdList(ids: number[]): number[] {
 async function ensureMonitorsExist(db: D1Database, monitorIds: number[]): Promise<void> {
   const ids = normalizeIdList(monitorIds);
   if (ids.length === 0) {
-    throw new AppError(400, 'INVALID_ARGUMENT', '`monitor_ids` must contain at least one monitor id');
+    throw new AppError(
+      400,
+      'INVALID_ARGUMENT',
+      '`monitor_ids` must contain at least one monitor id',
+    );
   }
 
   const placeholders = ids.map((_, idx) => `?${idx + 1}`).join(', ');
@@ -891,7 +925,7 @@ async function ensureMonitorsExist(db: D1Database, monitorIds: number[]): Promis
         SELECT id
         FROM monitors
         WHERE id IN (${placeholders})
-      `
+      `,
     )
     .bind(...ids)
     .all<{ id: number }>();
@@ -926,7 +960,9 @@ type IncidentMonitorLinkRow = {
   monitor_id: number;
 };
 
-function toIncidentStatus(value: string | null): 'investigating' | 'identified' | 'monitoring' | 'resolved' {
+function toIncidentStatus(
+  value: string | null,
+): 'investigating' | 'identified' | 'monitoring' | 'resolved' {
   switch (value) {
     case 'investigating':
     case 'identified':
@@ -960,7 +996,11 @@ function incidentUpdateRowToApi(row: IncidentUpdateRow) {
   };
 }
 
-function incidentRowToApi(row: IncidentRow, updates: IncidentUpdateRow[] = [], monitorIds: number[] = []) {
+function incidentRowToApi(
+  row: IncidentRow,
+  updates: IncidentUpdateRow[] = [],
+  monitorIds: number[] = [],
+) {
   return {
     id: row.id,
     title: row.title,
@@ -976,7 +1016,7 @@ function incidentRowToApi(row: IncidentRow, updates: IncidentUpdateRow[] = [], m
 
 async function listIncidentUpdatesByIncidentId(
   db: D1Database,
-  incidentIds: number[]
+  incidentIds: number[],
 ): Promise<Map<number, IncidentUpdateRow[]>> {
   const byIncident = new Map<number, IncidentUpdateRow[]>();
   if (incidentIds.length === 0) return byIncident;
@@ -989,7 +1029,10 @@ async function listIncidentUpdatesByIncidentId(
     ORDER BY incident_id, created_at, id
   `;
 
-  const { results } = await db.prepare(sql).bind(...incidentIds).all<IncidentUpdateRow>();
+  const { results } = await db
+    .prepare(sql)
+    .bind(...incidentIds)
+    .all<IncidentUpdateRow>();
   for (const r of results ?? []) {
     const existing = byIncident.get(r.incident_id) ?? [];
     existing.push(r);
@@ -1000,7 +1043,7 @@ async function listIncidentUpdatesByIncidentId(
 
 async function listIncidentMonitorIdsByIncidentId(
   db: D1Database,
-  incidentIds: number[]
+  incidentIds: number[],
 ): Promise<Map<number, number[]>> {
   const byIncident = new Map<number, number[]>();
   if (incidentIds.length === 0) return byIncident;
@@ -1013,7 +1056,10 @@ async function listIncidentMonitorIdsByIncidentId(
     ORDER BY incident_id, monitor_id
   `;
 
-  const { results } = await db.prepare(sql).bind(...incidentIds).all<IncidentMonitorLinkRow>();
+  const { results } = await db
+    .prepare(sql)
+    .bind(...incidentIds)
+    .all<IncidentMonitorLinkRow>();
   for (const r of results ?? []) {
     const existing = byIncident.get(r.incident_id) ?? [];
     existing.push(r.monitor_id);
@@ -1051,7 +1097,7 @@ function maintenanceWindowRowToApi(row: MaintenanceWindowRow, monitorIds: number
 
 async function listMaintenanceWindowMonitorIdsByWindowId(
   db: D1Database,
-  windowIds: number[]
+  windowIds: number[],
 ): Promise<Map<number, number[]>> {
   const byWindow = new Map<number, number[]>();
   if (windowIds.length === 0) return byWindow;
@@ -1064,7 +1110,10 @@ async function listMaintenanceWindowMonitorIdsByWindowId(
     ORDER BY maintenance_window_id, monitor_id
   `;
 
-  const { results } = await db.prepare(sql).bind(...windowIds).all<MaintenanceWindowMonitorLinkRow>();
+  const { results } = await db
+    .prepare(sql)
+    .bind(...windowIds)
+    .all<MaintenanceWindowMonitorLinkRow>();
   for (const r of results ?? []) {
     const existing = byWindow.get(r.maintenance_window_id) ?? [];
     existing.push(r.monitor_id);
@@ -1082,7 +1131,7 @@ adminRoutes.post('/notification-channels/:id/test', async (c) => {
       SELECT id, name, type, config_json, is_active, created_at
       FROM notification_channels
       WHERE id = ?1
-    `
+    `,
   )
     .bind(id)
     .first<NotificationChannelRow>();
@@ -1091,7 +1140,9 @@ adminRoutes.post('/notification-channels/:id/test', async (c) => {
     throw new AppError(404, 'NOT_FOUND', 'Notification channel not found');
   }
 
-  const config = parseDbJson(webhookChannelConfigSchema, channelRow.config_json, { field: 'config_json' });
+  const config = parseDbJson(webhookChannelConfigSchema, channelRow.config_json, {
+    field: 'config_json',
+  });
   const channel = { id: channelRow.id, name: channelRow.name, config };
 
   const now = Math.floor(Date.now() / 1000);
@@ -1118,7 +1169,7 @@ adminRoutes.post('/notification-channels/:id/test', async (c) => {
       SELECT status, http_status, error, created_at
       FROM notification_deliveries
       WHERE event_key = ?1 AND channel_id = ?2
-    `
+    `,
   )
     .bind(eventKey, id)
     .first<NotificationDeliveryRow>();
@@ -1137,7 +1188,14 @@ adminRoutes.post('/notification-channels/:id/test', async (c) => {
 });
 
 adminRoutes.get('/incidents', async (c) => {
-  const limit = z.coerce.number().int().min(1).max(200).optional().default(50).parse(c.req.query('limit'));
+  const limit = z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(200)
+    .optional()
+    .default(50)
+    .parse(c.req.query('limit'));
 
   const { results: incidentRows } = await c.env.DB.prepare(
     `
@@ -1148,7 +1206,7 @@ adminRoutes.get('/incidents', async (c) => {
         started_at DESC,
         id DESC
       LIMIT ?1
-    `
+    `,
   )
     .bind(limit)
     .all<IncidentRow>();
@@ -1156,16 +1214,20 @@ adminRoutes.get('/incidents', async (c) => {
   const incidentsList = incidentRows ?? [];
   const monitorIdsByIncidentId = await listIncidentMonitorIdsByIncidentId(
     c.env.DB,
-    incidentsList.map((r) => r.id)
+    incidentsList.map((r) => r.id),
   );
   const updatesByIncidentId = await listIncidentUpdatesByIncidentId(
     c.env.DB,
-    incidentsList.map((r) => r.id)
+    incidentsList.map((r) => r.id),
   );
 
   return c.json({
     incidents: incidentsList.map((r) =>
-      incidentRowToApi(r, updatesByIncidentId.get(r.id) ?? [], monitorIdsByIncidentId.get(r.id) ?? [])
+      incidentRowToApi(
+        r,
+        updatesByIncidentId.get(r.id) ?? [],
+        monitorIdsByIncidentId.get(r.id) ?? [],
+      ),
     ),
   });
 });
@@ -1190,7 +1252,7 @@ adminRoutes.post('/incidents', async (c) => {
       INSERT INTO incidents (title, status, impact, message, started_at, resolved_at)
       VALUES (?1, ?2, ?3, ?4, ?5, NULL)
       RETURNING id, title, status, impact, message, started_at, resolved_at
-    `
+    `,
   )
     .bind(input.title, input.status, input.impact, input.message ?? null, startedAt)
     .first<IncidentRow>();
@@ -1204,8 +1266,8 @@ adminRoutes.post('/incidents', async (c) => {
       `
         INSERT INTO incident_monitors (incident_id, monitor_id, created_at)
         VALUES (?1, ?2, ?3)
-      `
-    ).bind(row.id, monitorId, now)
+      `,
+    ).bind(row.id, monitorId, now),
   );
   if (linkStatements.length > 0) {
     await c.env.DB.batch(linkStatements);
@@ -1255,7 +1317,7 @@ adminRoutes.post('/incidents/:id/updates', async (c) => {
       SELECT id, title, status, impact, message, started_at, resolved_at
       FROM incidents
       WHERE id = ?1
-    `
+    `,
   )
     .bind(id)
     .first<IncidentRow>();
@@ -1276,7 +1338,7 @@ adminRoutes.post('/incidents/:id/updates', async (c) => {
       INSERT INTO incident_updates (incident_id, status, message, created_at)
       VALUES (?1, ?2, ?3, ?4)
       RETURNING id, incident_id, status, message, created_at
-    `
+    `,
   )
     .bind(id, input.status ?? null, input.message, now)
     .first<IncidentUpdateRow>();
@@ -1291,7 +1353,7 @@ adminRoutes.post('/incidents/:id/updates', async (c) => {
         UPDATE incidents
         SET status = ?1
         WHERE id = ?2
-      `
+      `,
     )
       .bind(input.status, id)
       .run();
@@ -1302,7 +1364,7 @@ adminRoutes.post('/incidents/:id/updates', async (c) => {
       SELECT id, title, status, impact, message, started_at, resolved_at
       FROM incidents
       WHERE id = ?1
-    `
+    `,
   )
     .bind(id)
     .first<IncidentRow>();
@@ -1359,7 +1421,7 @@ adminRoutes.patch('/incidents/:id/resolve', async (c) => {
       SELECT id, title, status, impact, message, started_at, resolved_at
       FROM incidents
       WHERE id = ?1
-    `
+    `,
   )
     .bind(id)
     .first<IncidentRow>();
@@ -1383,7 +1445,7 @@ adminRoutes.patch('/incidents/:id/resolve', async (c) => {
       UPDATE incidents
       SET status = 'resolved', resolved_at = ?1
       WHERE id = ?2
-    `
+    `,
   )
     .bind(now, id)
     .run();
@@ -1394,7 +1456,7 @@ adminRoutes.patch('/incidents/:id/resolve', async (c) => {
       INSERT INTO incident_updates (incident_id, status, message, created_at)
       VALUES (?1, 'resolved', ?2, ?3)
       RETURNING id, incident_id, status, message, created_at
-    `
+    `,
   )
     .bind(id, message, now)
     .first<IncidentUpdateRow>();
@@ -1408,7 +1470,7 @@ adminRoutes.patch('/incidents/:id/resolve', async (c) => {
       SELECT id, title, status, impact, message, started_at, resolved_at
       FROM incidents
       WHERE id = ?1
-    `
+    `,
   )
     .bind(id)
     .first<IncidentRow>();
@@ -1460,7 +1522,7 @@ adminRoutes.delete('/incidents/:id', async (c) => {
       SELECT id, title, status, impact, message, started_at, resolved_at
       FROM incidents
       WHERE id = ?1
-    `
+    `,
   )
     .bind(id)
     .first<IncidentRow>();
@@ -1474,19 +1536,19 @@ adminRoutes.delete('/incidents/:id', async (c) => {
       `
         DELETE FROM incident_updates
         WHERE incident_id = ?1
-      `
+      `,
     ).bind(id),
     c.env.DB.prepare(
       `
         DELETE FROM incident_monitors
         WHERE incident_id = ?1
-      `
+      `,
     ).bind(id),
     c.env.DB.prepare(
       `
         DELETE FROM incidents
         WHERE id = ?1
-      `
+      `,
     ).bind(id),
   ]);
 
@@ -1496,7 +1558,14 @@ adminRoutes.delete('/incidents/:id', async (c) => {
 });
 
 adminRoutes.get('/maintenance-windows', async (c) => {
-  const limit = z.coerce.number().int().min(1).max(200).optional().default(50).parse(c.req.query('limit'));
+  const limit = z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(200)
+    .optional()
+    .default(50)
+    .parse(c.req.query('limit'));
 
   const { results } = await c.env.DB.prepare(
     `
@@ -1504,7 +1573,7 @@ adminRoutes.get('/maintenance-windows', async (c) => {
       FROM maintenance_windows
       ORDER BY starts_at DESC, id DESC
       LIMIT ?1
-    `
+    `,
   )
     .bind(limit)
     .all<MaintenanceWindowRow>();
@@ -1512,11 +1581,13 @@ adminRoutes.get('/maintenance-windows', async (c) => {
   const windows = results ?? [];
   const monitorIdsByWindowId = await listMaintenanceWindowMonitorIdsByWindowId(
     c.env.DB,
-    windows.map((w) => w.id)
+    windows.map((w) => w.id),
   );
 
   return c.json({
-    maintenance_windows: windows.map((w) => maintenanceWindowRowToApi(w, monitorIdsByWindowId.get(w.id) ?? [])),
+    maintenance_windows: windows.map((w) =>
+      maintenanceWindowRowToApi(w, monitorIdsByWindowId.get(w.id) ?? []),
+    ),
   });
 });
 
@@ -1535,7 +1606,7 @@ adminRoutes.post('/maintenance-windows', async (c) => {
       INSERT INTO maintenance_windows (title, message, starts_at, ends_at, created_at)
       VALUES (?1, ?2, ?3, ?4, ?5)
       RETURNING id, title, message, starts_at, ends_at, created_at
-    `
+    `,
   )
     .bind(input.title, input.message ?? null, input.starts_at, input.ends_at, now)
     .first<MaintenanceWindowRow>();
@@ -1549,8 +1620,8 @@ adminRoutes.post('/maintenance-windows', async (c) => {
       `
         INSERT INTO maintenance_window_monitors (maintenance_window_id, monitor_id, created_at)
         VALUES (?1, ?2, ?3)
-      `
-    ).bind(row.id, monitorId, now)
+      `,
+    ).bind(row.id, monitorId, now),
   );
   if (linkStatements.length > 0) {
     await c.env.DB.batch(linkStatements);
@@ -1574,7 +1645,7 @@ adminRoutes.patch('/maintenance-windows/:id', async (c) => {
       SELECT id, title, message, starts_at, ends_at, created_at
       FROM maintenance_windows
       WHERE id = ?1
-    `
+    `,
   )
     .bind(id)
     .first<MaintenanceWindowRow>();
@@ -1595,14 +1666,14 @@ adminRoutes.patch('/maintenance-windows/:id', async (c) => {
       SET title = ?1, message = ?2, starts_at = ?3, ends_at = ?4
       WHERE id = ?5
       RETURNING id, title, message, starts_at, ends_at, created_at
-    `
+    `,
   )
     .bind(
       input.title ?? existing.title,
       input.message !== undefined ? input.message : existing.message,
       nextStartsAt,
       nextEndsAt,
-      id
+      id,
     )
     .first<MaintenanceWindowRow>();
 
@@ -1620,8 +1691,8 @@ adminRoutes.patch('/maintenance-windows/:id', async (c) => {
         `
           DELETE FROM maintenance_window_monitors
           WHERE maintenance_window_id = ?1
-        `
-      ).bind(id)
+        `,
+      ).bind(id),
     );
     for (const monitorId of monitorIds) {
       statements.push(
@@ -1629,8 +1700,8 @@ adminRoutes.patch('/maintenance-windows/:id', async (c) => {
           `
             INSERT INTO maintenance_window_monitors (maintenance_window_id, monitor_id, created_at)
             VALUES (?1, ?2, ?3)
-          `
-        ).bind(id, monitorId, Math.floor(Date.now() / 1000))
+          `,
+        ).bind(id, monitorId, Math.floor(Date.now() / 1000)),
       );
     }
 
@@ -1652,7 +1723,7 @@ adminRoutes.delete('/maintenance-windows/:id', async (c) => {
       SELECT id
       FROM maintenance_windows
       WHERE id = ?1
-    `
+    `,
   )
     .bind(id)
     .first<{ id: number }>();
@@ -1666,13 +1737,13 @@ adminRoutes.delete('/maintenance-windows/:id', async (c) => {
       `
         DELETE FROM maintenance_window_monitors
         WHERE maintenance_window_id = ?1
-      `
+      `,
     ).bind(id),
     c.env.DB.prepare(
       `
         DELETE FROM maintenance_windows
         WHERE id = ?1
-      `
+      `,
     ).bind(id),
   ]);
 

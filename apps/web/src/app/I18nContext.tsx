@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 
 import type { LocaleSetting, SupportedLocale } from '../api/types';
 import { messages, supportedLocales, type MessageKey } from '../i18n/messages';
@@ -71,7 +79,10 @@ function interpolate(template: string, values?: TranslateValues): string {
   });
 }
 
-function resolveEffectiveLocale(setting: LocaleSetting, browserLocale: SupportedLocale): SupportedLocale {
+function resolveEffectiveLocale(
+  setting: LocaleSetting,
+  browserLocale: SupportedLocale,
+): SupportedLocale {
   const normalizedSetting = normalizeLocaleSetting(setting) ?? 'auto';
   const normalizedBrowser = normalizeSupportedLocale(browserLocale) ?? 'en';
   return normalizedSetting === 'auto' ? normalizedBrowser : normalizedSetting;

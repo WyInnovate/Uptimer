@@ -70,7 +70,7 @@ export async function writeStatusSnapshot(
         body_json = excluded.body_json,
         updated_at = excluded.updated_at
     `,
-      )
+    )
     .bind(SNAPSHOT_KEY, payload.generated_at, bodyJson, now)
     .run();
 }

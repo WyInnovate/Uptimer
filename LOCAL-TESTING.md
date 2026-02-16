@@ -20,11 +20,11 @@
 
 ## 环境要求
 
-| 工具 | 版本要求 | 说明 |
-|------|---------|------|
-| Node.js | >= 22.14.0 | JavaScript 运行时 |
-| pnpm | >= 10.8.1 | 包管理器 |
-| Wrangler | 最新版 | Cloudflare Workers CLI |
+| 工具     | 版本要求   | 说明                   |
+| -------- | ---------- | ---------------------- |
+| Node.js  | >= 22.14.0 | JavaScript 运行时      |
+| pnpm     | >= 10.8.1  | 包管理器               |
+| Wrangler | 最新版     | Cloudflare Workers CLI |
 
 ### 安装 pnpm
 
@@ -48,7 +48,7 @@ npm install -g wrangler
 pnpm install
 ```
 
-这将安装所有工作区（apps/web、apps/worker、packages/*）的依赖。
+这将安装所有工作区（apps/web、apps/worker、packages/\*）的依赖。
 
 ---
 
@@ -81,11 +81,13 @@ pnpm dev
 ```
 
 该命令会自动完成：
+
 - Worker 本地数据库 migration（`apps/worker`）
 - 本地种子数据注入（覆盖常见状态与事件场景）
 - 并行启动 Worker 与 Web 开发服务器
 
 默认地址：
+
 - Worker: `http://localhost:8787`
 - Web: `http://localhost:5173`
 
@@ -109,6 +111,7 @@ wrangler d1 execute uptimer --local --command="SELECT name FROM sqlite_master WH
 ```
 
 应该看到以下表：
+
 - monitors
 - monitor_state
 - check_results
@@ -137,6 +140,7 @@ pnpm seed:local
 ```
 
 该脚本会在保留 ID 区间 `900001-900099` 内写入演示数据（不会覆盖你手工创建的普通 ID 数据），包含：
+
 - 6 个 monitors（HTTP/TCP）
 - 对应 `monitor_state` 与近 60 条心跳数据
 - 进行中 outage + 已恢复 outage
@@ -289,6 +293,7 @@ curl -X DELETE http://localhost:8787/api/v1/admin/monitors/{id} \
 #### 创建通知渠道（自定义模板 + 魔法变量）
 
 下面示例会：
+
 - 使用 `payload_type: json`
 - 用 `message_template` 生成可复用的 `{{message}}`
 - 用 `payload_template` 自定义最终发送给 webhook 的 JSON 结构
@@ -372,6 +377,7 @@ curl -X POST http://localhost:8787/api/v1/admin/notification-channels \
 ```
 
 > 魔法变量规则（简版）：
+>
 > - 支持 `{{path.to.field}}` 和数组索引 `{{arr[0].x}}`
 > - 兼容 `$MSG`（会替换为渲染后的 message）
 > - `{{message}}` 是渲染后的最终消息；`{{default_message}}` 是系统默认消息
@@ -601,12 +607,14 @@ wrangler d1 migrations apply uptimer --local
 ### Q: 前端无法连接后端 API
 
 **A**: 检查以下几点：
+
 1. Worker 是否在 `localhost:8787` 运行
 2. Vite 配置中的代理设置是否正确（见 `apps/web/vite.config.ts`）
 
 ### Q: 认证失败 (401 Unauthorized)
 
 **A**: 确保：
+
 1. `.dev.vars` 文件存在且包含 `ADMIN_TOKEN`
 2. 请求头中的 Token 与 `.dev.vars` 中的一致
 

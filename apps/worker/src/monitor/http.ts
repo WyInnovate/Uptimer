@@ -32,7 +32,11 @@ function isAbortError(err: unknown): boolean {
   return false;
 }
 
-async function fetchWithTimeout(url: string, timeoutMs: number, init: RequestInit): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  timeoutMs: number,
+  init: RequestInit,
+): Promise<Response> {
   const controller = new AbortController();
 
   // If the caller also passes a signal, forward abort.
@@ -50,7 +54,7 @@ async function fetchWithTimeout(url: string, timeoutMs: number, init: RequestIni
 
 async function readTextUpTo(
   stream: ReadableStream<Uint8Array>,
-  maxBytes: number
+  maxBytes: number,
 ): Promise<{ text: string; truncated: boolean }> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();

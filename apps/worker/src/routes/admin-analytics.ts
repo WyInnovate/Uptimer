@@ -30,8 +30,20 @@ const monitorRangeSchema = z.enum(['24h', '7d', '30d', '90d']);
 const HISTOGRAM_SIZE = LATENCY_BUCKETS_MS.length + 1;
 const histogramSchema = z.array(z.number().int().nonnegative()).length(HISTOGRAM_SIZE);
 
-type MonitorRow = { id: number; name: string; type: string; interval_sec: number; created_at: number };
-type OutageRow = { id: number; started_at: number; ended_at: number | null; initial_error: string | null; last_error: string | null };
+type MonitorRow = {
+  id: number;
+  name: string;
+  type: string;
+  interval_sec: number;
+  created_at: number;
+};
+type OutageRow = {
+  id: number;
+  started_at: number;
+  ended_at: number | null;
+  initial_error: string | null;
+  last_error: string | null;
+};
 type CheckRow = { checked_at: number; status: string; latency_ms: number | null };
 
 type DailyRollupRow = {
@@ -85,7 +97,11 @@ function parseHistogram(value: string | null): number[] | null {
   try {
     parsed = JSON.parse(value) as unknown;
   } catch (err) {
-    throw new AppError(500, 'INTERNAL', `Invalid latency_histogram_json: ${(err as Error).message}`);
+    throw new AppError(
+      500,
+      'INTERNAL',
+      `Invalid latency_histogram_json: ${(err as Error).message}`,
+    );
   }
 
   const r = histogramSchema.safeParse(parsed);
@@ -96,7 +112,11 @@ function parseHistogram(value: string | null): number[] | null {
   return r.data;
 }
 
-function clampOutageIntervals(rows: Array<{ started_at: number; ended_at: number | null }>, start: number, end: number): Interval[] {
+function clampOutageIntervals(
+  rows: Array<{ started_at: number; ended_at: number | null }>,
+  start: number,
+  end: number,
+): Interval[] {
   return mergeIntervals(
     rows
       .map((r) => {
@@ -104,12 +124,15 @@ function clampOutageIntervals(rows: Array<{ started_at: number; ended_at: number
         const e = Math.min(r.ended_at ?? end, end);
         return { start: s, end: e };
       })
-      .filter((it) => it.end > it.start)
+      .filter((it) => it.end > it.start),
   );
 }
 
 adminAnalyticsRoutes.get('/overview', async (c) => {
-  const range = overviewRangeSchema.optional().default('24h').parse(c.req.query('range')) as UptimeRange;
+  const range = overviewRangeSchema
+    .optional()
+    .default('24h')
+    .parse(c.req.query('range')) as UptimeRange;
   const { start: rangeStartBase, end: rangeEnd } = computeRange(range);
 
   const { results: monitorRows } = await c.env.DB.prepare(
@@ -118,7 +141,7 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
       FROM monitors
       WHERE is_active = 1
       ORDER BY id
-    `
+    `,
   ).all<{ id: number; created_at: number }>();
 
   const monitors = monitorRows ?? [];
@@ -137,7 +160,7 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
       WHERE m.is_active = 1
         AND o.started_at < ?1 AND (o.ended_at IS NULL OR o.ended_at > ?2)
       ORDER BY o.monitor_id, o.started_at
-    `
+    `,
   )
     .bind(rangeEnd, rangeStartBase)
     .all<{ monitor_id: number; started_at: number; ended_at: number | null }>();
@@ -174,7 +197,7 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
       JOIN monitors m ON m.id = o.monitor_id
       WHERE m.is_active = 1
         AND o.started_at >= ?1 AND o.started_at < ?2
-    `
+    `,
   )
     .bind(rangeStartBase, rangeEnd)
     .all<{ count: number }>();
@@ -188,7 +211,7 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
       WHERE m.is_active = 1
         AND o.ended_at IS NOT NULL
         AND o.ended_at >= ?1 AND o.ended_at < ?2
-    `
+    `,
   )
     .bind(rangeStartBase, rangeEnd)
     .all<{ started_at: number; ended_at: number }>();
@@ -196,7 +219,10 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
   const durations = (mttrRows ?? [])
     .map((r) => Math.max(0, r.ended_at - r.started_at))
     .filter((d) => d > 0);
-  const mttr_sec = durations.length === 0 ? null : Math.round(durations.reduce((acc, v) => acc + v, 0) / durations.length);
+  const mttr_sec =
+    durations.length === 0
+      ? null
+      : Math.round(durations.reduce((acc, v) => acc + v, 0) / durations.length);
 
   return c.json({
     range,
@@ -288,9 +314,20 @@ async function computePartialDayRow(
     .bind(monitor.id, checksStart, end)
     .all<CheckRow>();
 
-  const normalizedChecks = (checkRows ?? []).map((r) => ({ checked_at: r.checked_at, status: toCheckStatus(r.status) }));
-  const unknownIntervals = buildUnknownIntervals(start, end, monitor.interval_sec, normalizedChecks);
-  const unknown_sec = Math.max(0, sumIntervals(unknownIntervals) - overlapSeconds(unknownIntervals, downtimeIntervals));
+  const normalizedChecks = (checkRows ?? []).map((r) => ({
+    checked_at: r.checked_at,
+    status: toCheckStatus(r.status),
+  }));
+  const unknownIntervals = buildUnknownIntervals(
+    start,
+    end,
+    monitor.interval_sec,
+    normalizedChecks,
+  );
+  const unknown_sec = Math.max(
+    0,
+    sumIntervals(unknownIntervals) - overlapSeconds(unknownIntervals, downtimeIntervals),
+  );
 
   const unavailable_sec = Math.min(total_sec, downtime_sec + unknown_sec);
   const uptime_sec = Math.max(0, total_sec - unavailable_sec);
@@ -307,7 +344,8 @@ async function computePartialDayRow(
     const st = toCheckStatus(r.status);
     if (st === 'up') {
       checks_up++;
-      if (typeof r.latency_ms === 'number' && Number.isFinite(r.latency_ms)) latencies.push(r.latency_ms);
+      if (typeof r.latency_ms === 'number' && Number.isFinite(r.latency_ms))
+        latencies.push(r.latency_ms);
     } else if (st === 'down') {
       checks_down++;
     } else if (st === 'maintenance') {
@@ -345,14 +383,17 @@ async function computePartialDayRow(
 
 adminAnalyticsRoutes.get('/monitors/:id', async (c) => {
   const id = z.coerce.number().int().positive().parse(c.req.param('id'));
-  const range = monitorRangeSchema.optional().default('24h').parse(c.req.query('range')) as UptimeRange;
+  const range = monitorRangeSchema
+    .optional()
+    .default('24h')
+    .parse(c.req.query('range')) as UptimeRange;
 
   const monitor = await c.env.DB.prepare(
     `
       SELECT id, name, type, interval_sec, created_at
       FROM monitors
       WHERE id = ?1
-    `
+    `,
   )
     .bind(id)
     .first<MonitorRow>();
@@ -396,7 +437,7 @@ adminAnalyticsRoutes.get('/monitors/:id', async (c) => {
           AND started_at < ?2
           AND (ended_at IS NULL OR ended_at > ?3)
         ORDER BY started_at
-      `
+      `,
     )
       .bind(id, rangeEnd, rangeStart)
       .all<{ started_at: number; ended_at: number | null }>();
@@ -413,7 +454,7 @@ adminAnalyticsRoutes.get('/monitors/:id', async (c) => {
           AND checked_at >= ?2
           AND checked_at < ?3
         ORDER BY checked_at
-      `
+      `,
     )
       .bind(id, checksStart, rangeEnd)
       .all<CheckRow>();
@@ -422,8 +463,16 @@ adminAnalyticsRoutes.get('/monitors/:id', async (c) => {
       checked_at: r.checked_at,
       status: toCheckStatus(r.status),
     }));
-    const unknownIntervals = buildUnknownIntervals(rangeStart, rangeEnd, monitor.interval_sec, normalizedChecks);
-    const unknown_sec = Math.max(0, sumIntervals(unknownIntervals) - overlapSeconds(unknownIntervals, downtimeIntervals));
+    const unknownIntervals = buildUnknownIntervals(
+      rangeStart,
+      rangeEnd,
+      monitor.interval_sec,
+      normalizedChecks,
+    );
+    const unknown_sec = Math.max(
+      0,
+      sumIntervals(unknownIntervals) - overlapSeconds(unknownIntervals, downtimeIntervals),
+    );
 
     const unavailable_sec = Math.min(total_sec, downtime_sec + unknown_sec);
     const uptime_sec = Math.max(0, total_sec - unavailable_sec);
@@ -470,7 +519,13 @@ adminAnalyticsRoutes.get('/monitors/:id', async (c) => {
       avg_latency_ms: avg(latencies),
       p50_latency_ms: percentileFromValues(latencies, 0.5),
       p95_latency_ms: percentileFromValues(latencies, 0.95),
-      checks: { total: checks_total, up: checks_up, down: checks_down, unknown: checks_unknown, maintenance: checks_maintenance },
+      checks: {
+        total: checks_total,
+        up: checks_up,
+        down: checks_down,
+        unknown: checks_unknown,
+        maintenance: checks_maintenance,
+      },
       points,
       daily: [],
     });
@@ -504,7 +559,7 @@ adminAnalyticsRoutes.get('/monitors/:id', async (c) => {
         AND day_start_at >= ?2
         AND day_start_at < ?3
       ORDER BY day_start_at
-    `
+    `,
   )
     .bind(id, daysStart, daysEnd)
     .all<DailyRollupRow>();
@@ -668,7 +723,8 @@ adminAnalyticsRoutes.get('/monitors/:id', async (c) => {
 
   const mergedHist = mergeLatencyHistograms(histograms);
 
-  const avg_latency_ms = latencySamples === 0 ? null : Math.round(latencyWeightedSum / latencySamples);
+  const avg_latency_ms =
+    latencySamples === 0 ? null : Math.round(latencyWeightedSum / latencySamples);
   const p50_latency_ms = percentileFromHistogram(mergedHist, 0.5);
   const p95_latency_ms = percentileFromHistogram(mergedHist, 0.95);
 
@@ -686,7 +742,13 @@ adminAnalyticsRoutes.get('/monitors/:id', async (c) => {
     avg_latency_ms,
     p50_latency_ms,
     p95_latency_ms,
-    checks: { total: checks_total, up: checks_up, down: checks_down, unknown: checks_unknown, maintenance: checks_maintenance },
+    checks: {
+      total: checks_total,
+      up: checks_up,
+      down: checks_down,
+      unknown: checks_unknown,
+      maintenance: checks_maintenance,
+    },
     points: [],
     daily,
   });
@@ -694,11 +756,23 @@ adminAnalyticsRoutes.get('/monitors/:id', async (c) => {
 
 adminAnalyticsRoutes.get('/monitors/:id/outages', async (c) => {
   const id = z.coerce.number().int().positive().parse(c.req.param('id'));
-  const range = monitorRangeSchema.optional().default('7d').parse(c.req.query('range')) as UptimeRange;
-  const limit = z.coerce.number().int().min(1).max(200).optional().default(50).parse(c.req.query('limit'));
+  const range = monitorRangeSchema
+    .optional()
+    .default('7d')
+    .parse(c.req.query('range')) as UptimeRange;
+  const limit = z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(200)
+    .optional()
+    .default(50)
+    .parse(c.req.query('limit'));
   const cursor = z.coerce.number().int().positive().optional().parse(c.req.query('cursor'));
 
-  const monitor = await c.env.DB.prepare(`SELECT id, created_at FROM monitors WHERE id = ?1`).bind(id).first<{ id: number; created_at: number }>();
+  const monitor = await c.env.DB.prepare(`SELECT id, created_at FROM monitors WHERE id = ?1`)
+    .bind(id)
+    .first<{ id: number; created_at: number }>();
   if (!monitor) {
     throw new AppError(404, 'NOT_FOUND', 'Monitor not found');
   }
@@ -722,7 +796,7 @@ adminAnalyticsRoutes.get('/monitors/:id/outages', async (c) => {
             AND id < ?4
           ORDER BY id DESC
           LIMIT ?5
-        `
+        `,
       )
         .bind(id, rangeEnd, rangeStart, cursor, take)
         .all<OutageRow>()
@@ -731,14 +805,14 @@ adminAnalyticsRoutes.get('/monitors/:id/outages', async (c) => {
           ${sqlBase}
           ORDER BY id DESC
           LIMIT ?4
-        `
+        `,
       )
         .bind(id, rangeEnd, rangeStart, take)
         .all<OutageRow>();
 
   const rows = results ?? [];
   const page = rows.slice(0, limit);
-  const next_cursor = rows.length > limit ? page[page.length - 1]?.id ?? null : null;
+  const next_cursor = rows.length > limit ? (page[page.length - 1]?.id ?? null) : null;
 
   return c.json({
     range,

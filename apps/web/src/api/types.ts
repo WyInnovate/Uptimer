@@ -55,7 +55,16 @@ export interface UptimeSummary {
   uptime_pct: number;
 }
 
-export type UptimeColorTier = 'emerald' | 'green' | 'lime' | 'yellow' | 'amber' | 'orange' | 'red' | 'rose' | 'slate';
+export type UptimeColorTier =
+  | 'emerald'
+  | 'green'
+  | 'lime'
+  | 'yellow'
+  | 'amber'
+  | 'orange'
+  | 'red'
+  | 'rose'
+  | 'slate';
 export type UptimeRatingLevel = 1 | 2 | 3 | 4 | 5;
 
 export interface UptimeDay {
@@ -456,7 +465,6 @@ export interface ApiError {
     message: string;
   };
 }
-
 
 // Admin settings (non-sensitive, stored in D1 settings table)
 export interface AdminSettings {

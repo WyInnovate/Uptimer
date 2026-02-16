@@ -25,9 +25,8 @@ export async function runRetention(env: Env, controller: ScheduledController): P
   let totalDeleted = 0;
 
   for (let i = 0; i < MAX_BATCHES; i++) {
-    const r = await env.DB
-      .prepare(
-        `
+    const r = await env.DB.prepare(
+      `
         DELETE FROM check_results
         WHERE id IN (
           SELECT id
@@ -37,7 +36,7 @@ export async function runRetention(env: Env, controller: ScheduledController): P
           LIMIT ?2
         )
       `,
-      )
+    )
       .bind(cutoff, DELETE_BATCH_SIZE)
       .run();
 

@@ -9,6 +9,7 @@
 本仓库内的 `UptimeFlare/` 目录用于参考 Cloudflare Workers / Pages / D1 的用法与性能思路。
 
 约束：
+
 - 可以学习其思路与 API 用法，但**不要复制其业务逻辑/架构实现**，避免被其实现方式“带偏”。
 - 除非用户明确要求，否则不要修改 `UptimeFlare/` 目录。
 
@@ -17,6 +18,7 @@
 ## MUST READ FIRST（强制）
 
 在执行任何“写入/重构/生成代码/修改配置/运行破坏性命令”之前，必须先阅读并理解以下文档：
+
 - `AGENTS.md`（本文件）
 - `Application.md`（产品规格与技术约束）
 - `Structure.md`（目录结构与模块边界）
@@ -32,11 +34,13 @@
 说明：如果你以 Codex CLI/类似代理运行，本机可能已安装可复用的 “Skills”（存放在 `SKILL.md`）。当用户明确点名某个 skill，或任务明显匹配某个 skill 描述时，必须使用对应 skill 的流程。
 
 本机已知可用 skills（路径为本机路径）：
+
 - `create-plan`：用户明确要求“计划/Plan”时使用。(`C:/Users/User/.codex/skills/create-plan/SKILL.md`)
 - `skill-creator`：创建/更新 skills 时使用。(`C:/Users/User/.codex/skills/.system/skill-creator/SKILL.md`)
 - `skill-installer`：安装 curated skill 或从 repo 安装 skills 时使用。(`C:/Users/User/.codex/skills/.system/skill-installer/SKILL.md`)
 
 执行约定（简版）：
+
 - 先打开对应 `SKILL.md`，只读到足够执行该任务为止；避免一次性读入大量参考文件。
 - 若 skill 提供脚本/模板，优先复用而不是手写大段内容。
 - 未找到/无法读取 skill 文件时，简要说明并用最佳替代方案继续推进。
@@ -76,6 +80,7 @@
 ## 4. 实现优先级（MVP）
 
 严格按 `Plan.md` 从 Phase 0 -> Phase 7 推进：
+
 - 先 Worker + D1 跑通（含 scheduled）再做完整 UI
 - 先 HTTP/TCP 与状态机正确性，再谈多地域与高级分析
 
@@ -84,6 +89,7 @@
 ## 5. 开发/提交标准（Definition of Done）
 
 每次变更至少满足：
+
 - 变更范围小且聚焦（不要“一次性大改”）
 - 本地能跑通基础命令（如果已存在脚本）：
   - `pnpm -r lint`
@@ -105,6 +111,7 @@
 ## 7. 变更说明要求（对我输出时）
 
 请在说明中包含：
+
 - 你做了什么（1–3 行）
 - 为什么这么做（关键约束/风险）
 - 影响到哪些路径/模块（文件路径）

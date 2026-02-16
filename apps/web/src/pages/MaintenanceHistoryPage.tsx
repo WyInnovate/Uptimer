@@ -67,10 +67,17 @@ export function MaintenanceHistoryPage() {
               aria-label={t('history.back_aria')}
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
+                />
               </svg>
             </Link>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{t('maintenance_history.title')}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
+              {t('maintenance_history.title')}
+            </h1>
           </div>
           <ThemeToggle />
         </div>
@@ -88,7 +95,9 @@ export function MaintenanceHistoryPage() {
           </div>
         ) : query.isError ? (
           <Card className="p-6 text-center">
-            <p className="text-sm text-red-600 dark:text-red-400">{formatError(query.error) ?? t('history.failed_load_maintenance')}</p>
+            <p className="text-sm text-red-600 dark:text-red-400">
+              {formatError(query.error) ?? t('history.failed_load_maintenance')}
+            </p>
           </Card>
         ) : all.length > 0 ? (
           <>
@@ -98,11 +107,13 @@ export function MaintenanceHistoryPage() {
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 mb-2">
                     <h4 className="font-semibold text-slate-900 dark:text-slate-100">{w.title}</h4>
                     <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                      {formatDateTime(w.starts_at, timeZone, locale)} – {formatDateTime(w.ends_at, timeZone, locale)}
+                      {formatDateTime(w.starts_at, timeZone, locale)} –{' '}
+                      {formatDateTime(w.ends_at, timeZone, locale)}
                     </span>
                   </div>
                   <div className="text-sm text-slate-600 dark:text-slate-300 mb-2">
-                    {t('common.affected')}: {w.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
+                    {t('common.affected')}:{' '}
+                    {w.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
                   </div>
                   {w.message && <Markdown text={w.message} />}
                 </Card>
@@ -123,7 +134,9 @@ export function MaintenanceHistoryPage() {
           </>
         ) : (
           <Card className="p-6 text-center">
-            <p className="text-slate-500 dark:text-slate-400">{t('status_page.no_past_maintenance')}</p>
+            <p className="text-slate-500 dark:text-slate-400">
+              {t('status_page.no_past_maintenance')}
+            </p>
           </Card>
         )}
       </main>

@@ -59,13 +59,7 @@ export function LatencyChart({ points, height = 200 }: LatencyChartProps) {
             color: isDark ? '#f1f5f9' : '#0f172a',
           }}
         />
-        <Line
-          type="monotone"
-          dataKey="latency"
-          stroke={lineColor}
-          strokeWidth={2}
-          dot={false}
-        />
+        <Line type="monotone" dataKey="latency" stroke={lineColor} strokeWidth={2} dot={false} />
       </LineChart>
     </ResponsiveContainer>
   );

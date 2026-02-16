@@ -1,5 +1,11 @@
 import type { PublicStatusResponse } from '../schemas/public-status';
 
+import {
+  buildUnknownIntervals,
+  mergeIntervals,
+  overlapSeconds,
+  sumIntervals,
+} from '../analytics/uptime';
 import { readSettings } from '../settings';
 
 type PublicStatusMonitorRow = {
@@ -110,7 +116,9 @@ function toCheckStatus(value: string | null): CheckStatus {
   }
 }
 
-function toIncidentStatus(value: string | null): PublicStatusResponse['active_incidents'][number]['status'] {
+function toIncidentStatus(
+  value: string | null,
+): PublicStatusResponse['active_incidents'][number]['status'] {
   switch (value) {
     case 'investigating':
     case 'identified':
@@ -122,7 +130,9 @@ function toIncidentStatus(value: string | null): PublicStatusResponse['active_in
   }
 }
 
-function toIncidentImpact(value: string | null): PublicStatusResponse['active_incidents'][number]['impact'] {
+function toIncidentImpact(
+  value: string | null,
+): PublicStatusResponse['active_incidents'][number]['impact'] {
   switch (value) {
     case 'none':
     case 'minor':
@@ -144,7 +154,11 @@ function incidentUpdateRowToApi(row: IncidentUpdateRow) {
   } satisfies PublicStatusResponse['active_incidents'][number]['updates'][number];
 }
 
-function incidentRowToApi(row: IncidentRow, updates: IncidentUpdateRow[] = [], monitorIds: number[] = []) {
+function incidentRowToApi(
+  row: IncidentRow,
+  updates: IncidentUpdateRow[] = [],
+  monitorIds: number[] = [],
+) {
   return {
     id: row.id,
     title: row.title,
@@ -203,10 +217,17 @@ async function listHeartbeatsByMonitorId(
     ORDER BY monitor_id, checked_at DESC, id DESC
   `;
 
-  const { results } = await db.prepare(sql).bind(limitPerMonitor, ...ids).all<HeartbeatRow>();
+  const { results } = await db
+    .prepare(sql)
+    .bind(limitPerMonitor, ...ids)
+    .all<HeartbeatRow>();
   for (const r of results ?? []) {
     const list = byMonitor.get(r.monitor_id) ?? [];
-    list.push({ checked_at: r.checked_at, status: toCheckStatus(r.status), latency_ms: r.latency_ms });
+    list.push({
+      checked_at: r.checked_at,
+      status: toCheckStatus(r.status),
+      latency_ms: r.latency_ms,
+    });
     byMonitor.set(r.monitor_id, list);
   }
 
@@ -228,7 +249,10 @@ async function listIncidentUpdatesByIncidentId(
     ORDER BY incident_id, created_at, id
   `;
 
-  const { results } = await db.prepare(sql).bind(...incidentIds).all<IncidentUpdateRow>();
+  const { results } = await db
+    .prepare(sql)
+    .bind(...incidentIds)
+    .all<IncidentUpdateRow>();
   for (const r of results ?? []) {
     const existing = byIncident.get(r.incident_id) ?? [];
     existing.push(r);
@@ -253,7 +277,10 @@ async function listIncidentMonitorIdsByIncidentId(
     ORDER BY incident_id, monitor_id
   `;
 
-  const { results } = await db.prepare(sql).bind(...incidentIds).all<IncidentMonitorLinkRow>();
+  const { results } = await db
+    .prepare(sql)
+    .bind(...incidentIds)
+    .all<IncidentMonitorLinkRow>();
   for (const r of results ?? []) {
     const existing = byIncident.get(r.incident_id) ?? [];
     existing.push(r.monitor_id);
@@ -278,7 +305,10 @@ async function listMaintenanceWindowMonitorIdsByWindowId(
     ORDER BY maintenance_window_id, monitor_id
   `;
 
-  const { results } = await db.prepare(sql).bind(...windowIds).all<MaintenanceWindowMonitorLinkRow>();
+  const { results } = await db
+    .prepare(sql)
+    .bind(...windowIds)
+    .all<MaintenanceWindowMonitorLinkRow>();
   for (const r of results ?? []) {
     const existing = byWindow.get(r.maintenance_window_id) ?? [];
     existing.push(r.monitor_id);
@@ -288,7 +318,11 @@ async function listMaintenanceWindowMonitorIdsByWindowId(
   return byWindow;
 }
 
-async function listActiveMaintenanceMonitorIds(db: D1Database, at: number, monitorIds: number[]): Promise<Set<number>> {
+async function listActiveMaintenanceMonitorIds(
+  db: D1Database,
+  at: number,
+  monitorIds: number[],
+): Promise<Set<number>> {
   const ids = [...new Set(monitorIds)];
   if (ids.length === 0) return new Set();
 
@@ -301,14 +335,16 @@ async function listActiveMaintenanceMonitorIds(db: D1Database, at: number, monit
       AND mwm.monitor_id IN (${placeholders})
   `;
 
-  const { results } = await db.prepare(sql).bind(at, ...ids).all<{ monitor_id: number }>();
+  const { results } = await db
+    .prepare(sql)
+    .bind(at, ...ids)
+    .all<{ monitor_id: number }>();
   return new Set((results ?? []).map((r) => r.monitor_id));
 }
 
 function utcDayStart(timestampSec: number): number {
   return Math.floor(timestampSec / 86400) * 86400;
 }
-
 
 async function readUptimeRatingLevel(db: D1Database): Promise<1 | 2 | 3 | 4 | 5> {
   // Stored in D1 settings table. Keep it simple: a single integer (1-5).
@@ -326,28 +362,51 @@ async function readUptimeRatingLevel(db: D1Database): Promise<1 | 2 | 3 | 4 | 5>
   return 3;
 }
 
-
-
-
 async function computeTodayPartialUptimeBatch(
   db: D1Database,
-  monitorIds: number[],
+  monitors: Array<{ id: number; interval_sec: number }>,
   rangeStart: number,
   now: number,
 ): Promise<
-  Map<number, { total_sec: number; downtime_sec: number; unknown_sec: number; uptime_sec: number; uptime_pct: number | null }>
+  Map<
+    number,
+    {
+      total_sec: number;
+      downtime_sec: number;
+      unknown_sec: number;
+      uptime_sec: number;
+      uptime_pct: number | null;
+    }
+  >
 > {
   const out = new Map<
     number,
-    { total_sec: number; downtime_sec: number; unknown_sec: number; uptime_sec: number; uptime_pct: number | null }
+    {
+      total_sec: number;
+      downtime_sec: number;
+      unknown_sec: number;
+      uptime_sec: number;
+      uptime_pct: number | null;
+    }
   >();
 
-  const ids = [...new Set(monitorIds)].filter((id) => Number.isFinite(id));
+  const monitorById = new Map<number, { id: number; interval_sec: number }>();
+  for (const monitor of monitors) {
+    if (!Number.isFinite(monitor.id)) continue;
+    monitorById.set(monitor.id, monitor);
+  }
+  const ids = [...monitorById.keys()];
   if (ids.length === 0) return out;
 
   if (now <= rangeStart) {
     for (const id of ids) {
-      out.set(id, { total_sec: 0, downtime_sec: 0, unknown_sec: 0, uptime_sec: 0, uptime_pct: null });
+      out.set(id, {
+        total_sec: 0,
+        downtime_sec: 0,
+        unknown_sec: 0,
+        uptime_sec: 0,
+        uptime_pct: null,
+      });
     }
     return out;
   }
@@ -369,43 +428,66 @@ async function computeTodayPartialUptimeBatch(
     .bind(now, rangeStart, ...ids)
     .all<{ monitor_id: number; started_at: number; ended_at: number | null }>();
 
-  const byId = new Map<number, Array<{ start: number; end: number }>>();
+  const downtimeById = new Map<number, Array<{ start: number; end: number }>>();
   for (const r of results ?? []) {
     const start = Math.max(r.started_at, rangeStart);
     const end = Math.min(r.ended_at ?? now, now);
     if (end <= start) continue;
-    const list = byId.get(r.monitor_id) ?? [];
+    const list = downtimeById.get(r.monitor_id) ?? [];
     list.push({ start, end });
-    byId.set(r.monitor_id, list);
+    downtimeById.set(r.monitor_id, list);
+  }
+
+  const maxIntervalSec = Math.max(...monitors.map((monitor) => monitor.interval_sec));
+  const checksStart = Math.max(0, rangeStart - Math.max(0, maxIntervalSec) * 2);
+  const checkPlaceholders = ids.map((_, idx) => `?${idx + 1}`).join(', ');
+  const { results: checkRows } = await db
+    .prepare(
+      `
+      SELECT monitor_id, checked_at, status
+      FROM check_results
+      WHERE monitor_id IN (${checkPlaceholders})
+        AND checked_at >= ?${ids.length + 1}
+        AND checked_at < ?${ids.length + 2}
+      ORDER BY monitor_id, checked_at
+    `,
+    )
+    .bind(...ids, checksStart, now)
+    .all<{ monitor_id: number; checked_at: number; status: string }>();
+
+  const checksById = new Map<number, Array<{ checked_at: number; status: string }>>();
+  for (const row of checkRows ?? []) {
+    const list = checksById.get(row.monitor_id) ?? [];
+    list.push({ checked_at: row.checked_at, status: toCheckStatus(row.status) });
+    checksById.set(row.monitor_id, list);
   }
 
   for (const id of ids) {
-    const intervals = byId.get(id) ?? [];
-    intervals.sort((a, b) => a.start - b.start);
+    const monitor = monitorById.get(id);
+    if (!monitor) continue;
 
-    let downtime_sec = 0;
-    let cur: { start: number; end: number } | null = null;
-    for (const it of intervals) {
-      if (!cur) {
-        cur = { start: it.start, end: it.end };
-        continue;
-      }
-      if (it.start <= cur.end) {
-        cur.end = Math.max(cur.end, it.end);
-        continue;
-      }
-      downtime_sec += Math.max(0, cur.end - cur.start);
-      cur = { start: it.start, end: it.end };
-    }
-    if (cur) downtime_sec += Math.max(0, cur.end - cur.start);
+    const downtimeIntervals = mergeIntervals(downtimeById.get(id) ?? []);
+    const downtime_sec = sumIntervals(downtimeIntervals);
 
-    const uptime_sec = Math.max(0, total_sec - downtime_sec);
+    const unknownIntervals = buildUnknownIntervals(
+      rangeStart,
+      now,
+      monitor.interval_sec,
+      checksById.get(id) ?? [],
+    );
+    const unknown_sec = Math.max(
+      0,
+      sumIntervals(unknownIntervals) - overlapSeconds(unknownIntervals, downtimeIntervals),
+    );
+
+    const unavailable_sec = Math.min(total_sec, downtime_sec + unknown_sec);
+    const uptime_sec = Math.max(0, total_sec - unavailable_sec);
     const uptime_pct = total_sec === 0 ? null : (uptime_sec / total_sec) * 100;
 
     out.set(id, {
       total_sec,
       downtime_sec,
-      unknown_sec: 0,
+      unknown_sec,
       uptime_sec,
       uptime_pct,
     });
@@ -422,7 +504,10 @@ function toUptimePct(totalSec: number, uptimeSec: number): number | null {
   return Math.max(0, Math.min(100, pct));
 }
 
-export async function computePublicStatusPayload(db: D1Database, now: number): Promise<PublicStatusResponse> {
+export async function computePublicStatusPayload(
+  db: D1Database,
+  now: number,
+): Promise<PublicStatusResponse> {
   // 30d bars should reflect today's (partial) uptime too; daily rollups only cover full UTC days.
   const rangeEndFullDays = utcDayStart(now);
   const rangeEnd = now;
@@ -540,7 +625,15 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
     const todayStartAt = utcDayStart(now);
     const needsToday = rangeEnd > rangeEndFullDays && todayStartAt >= rangeStart;
     const todayByMonitorId = needsToday
-      ? await computeTodayPartialUptimeBatch(db, ids, Math.max(todayStartAt, rangeStart), rangeEnd)
+      ? await computeTodayPartialUptimeBatch(
+          db,
+          rawMonitors.map((monitor) => ({
+            id: monitor.id,
+            interval_sec: monitor.interval_sec,
+          })),
+          Math.max(todayStartAt, rangeStart),
+          rangeEnd,
+        )
       : new Map();
 
     for (const m of monitorsList) {
@@ -598,7 +691,13 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
     }
   }
 
-  const counts: PublicStatusResponse['summary'] = { up: 0, down: 0, maintenance: 0, paused: 0, unknown: 0 };
+  const counts: PublicStatusResponse['summary'] = {
+    up: 0,
+    down: 0,
+    maintenance: 0,
+    paused: 0,
+    unknown: 0,
+  };
   for (const m of monitorsList) {
     counts[m.status]++;
   }
@@ -707,7 +806,11 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
             : 'operational';
 
       const title =
-        status === 'major_outage' ? 'Major Outage' : status === 'partial_outage' ? 'Partial Outage' : 'Incident';
+        status === 'major_outage'
+          ? 'Major Outage'
+          : status === 'partial_outage'
+            ? 'Partial Outage'
+            : 'Incident';
 
       const top = incidents[0];
       return {
@@ -751,7 +854,12 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
             source: 'maintenance',
             status: 'maintenance',
             title: 'Maintenance',
-            maintenance_window: { id: top.id, title: top.title, starts_at: top.starts_at, ends_at: top.ends_at },
+            maintenance_window: {
+              id: top.id,
+              title: top.title,
+              starts_at: top.starts_at,
+              ends_at: top.ends_at,
+            },
           }
         : { source: 'monitors', status: 'maintenance', title: 'Maintenance' };
     }

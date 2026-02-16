@@ -98,8 +98,7 @@ export function AdminAnalytics() {
   const { logout } = useAuth();
   const { locale, t } = useI18n();
 
-  const [overviewRange, setOverviewRange] =
-    useState<AnalyticsOverviewRange>('24h');
+  const [overviewRange, setOverviewRange] = useState<AnalyticsOverviewRange>('24h');
   const [monitorRange, setMonitorRange] = useState<AnalyticsRange>('24h');
   const [selectedMonitorId, setSelectedMonitorId] = useState<number | null>(null);
 
@@ -145,8 +144,7 @@ export function AdminAnalytics() {
     }
 
     const exists =
-      selectedMonitorId !== null &&
-      monitors.some((monitor) => monitor.id === selectedMonitorId);
+      selectedMonitorId !== null && monitors.some((monitor) => monitor.id === selectedMonitorId);
 
     if (!exists) {
       setSelectedMonitorId(monitors[0]?.id ?? null);
@@ -197,7 +195,12 @@ export function AdminAnalytics() {
               to={ADMIN_PATH}
               className="flex items-center justify-center h-10 text-base text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors px-3 rounded-lg"
             >
-              <svg className="w-5 h-5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg
+                className="w-5 h-5 sm:hidden"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -211,7 +214,12 @@ export function AdminAnalytics() {
               to="/"
               className="flex items-center justify-center h-10 text-base text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors px-3 rounded-lg"
             >
-              <svg className="w-5 h-5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg
+                className="w-5 h-5 sm:hidden"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -225,7 +233,12 @@ export function AdminAnalytics() {
               onClick={logout}
               className="flex items-center justify-center h-10 text-base text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors px-3 rounded-lg"
             >
-              <svg className="w-5 h-5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg
+                className="w-5 h-5 sm:hidden"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -312,11 +325,7 @@ export function AdminAnalytics() {
                   {t('admin_analytics.monitor_desc')}
                 </p>
               </div>
-              <RangeTabs
-                values={monitorRanges}
-                current={monitorRange}
-                onChange={setMonitorRange}
-              />
+              <RangeTabs values={monitorRanges} current={monitorRange} onChange={setMonitorRange} />
             </div>
 
             <label className="ui-label mb-0 text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -447,10 +456,18 @@ export function AdminAnalytics() {
                       <table className="w-full min-w-[540px] text-sm">
                         <thead className="text-xs text-slate-500 dark:text-slate-400">
                           <tr>
-                            <th className="py-2 pr-4 text-left">{t('admin_analytics.outage_start')}</th>
-                            <th className="py-2 pr-4 text-left">{t('admin_analytics.outage_end')}</th>
-                            <th className="py-2 pr-4 text-left">{t('admin_analytics.initial_error')}</th>
-                            <th className="py-2 pr-4 text-left">{t('admin_analytics.last_error')}</th>
+                            <th className="py-2 pr-4 text-left">
+                              {t('admin_analytics.outage_start')}
+                            </th>
+                            <th className="py-2 pr-4 text-left">
+                              {t('admin_analytics.outage_end')}
+                            </th>
+                            <th className="py-2 pr-4 text-left">
+                              {t('admin_analytics.initial_error')}
+                            </th>
+                            <th className="py-2 pr-4 text-left">
+                              {t('admin_analytics.last_error')}
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-700">

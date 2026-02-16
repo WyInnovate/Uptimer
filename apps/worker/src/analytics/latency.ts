@@ -1,6 +1,6 @@
 export const LATENCY_BUCKETS_MS = [
-  25, 50, 75, 100, 150, 200, 300, 400, 500, 750, 1000, 1500, 2000, 3000, 5000, 7500, 10000, 15000, 20000,
-  30000, 60000,
+  25, 50, 75, 100, 150, 200, 300, 400, 500, 750, 1000, 1500, 2000, 3000, 5000, 7500, 10000, 15000,
+  20000, 30000, 60000,
 ] as const;
 
 export type LatencyHistogram = number[];
@@ -83,4 +83,3 @@ export function percentileFromHistogram(hist: LatencyHistogram, p: number): numb
 
   return buckets[buckets.length - 1] ?? null;
 }
-

@@ -1,6 +1,11 @@
 import { useMemo, useState } from 'react';
 
-import type { AdminMonitor, CreateMonitorInput, MonitorType, PatchMonitorInput } from '../api/types';
+import type {
+  AdminMonitor,
+  CreateMonitorInput,
+  MonitorType,
+  PatchMonitorInput,
+} from '../api/types';
 import { useI18n } from '../app/I18nContext';
 import {
   Button,
@@ -61,7 +66,8 @@ function toHttpMethod(value: string): HttpMethod {
 function hasAdvancedHttpConfig(monitor: AdminMonitor | undefined): boolean {
   if (!monitor || monitor.type !== 'http') return false;
 
-  const hasHeaders = !!monitor.http_headers_json && Object.keys(monitor.http_headers_json).length > 0;
+  const hasHeaders =
+    !!monitor.http_headers_json && Object.keys(monitor.http_headers_json).length > 0;
   const hasExpected = !!monitor.expected_status_json && monitor.expected_status_json.length > 0;
   const hasBody = !!monitor.http_body && monitor.http_body.trim().length > 0;
   const hasKw = !!monitor.response_keyword && monitor.response_keyword.trim().length > 0;
@@ -161,8 +167,11 @@ export function MonitorForm(props: CreateProps | EditProps) {
   const monitor = props.monitor;
   const groupOptions = useMemo(
     () =>
-      [...new Set((props.groupOptions ?? []).map((name) => name.trim()).filter((name) => name.length > 0))]
-        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+      [
+        ...new Set(
+          (props.groupOptions ?? []).map((name) => name.trim()).filter((name) => name.length > 0),
+        ),
+      ].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
     [props.groupOptions],
   );
 
@@ -175,13 +184,18 @@ export function MonitorForm(props: CreateProps | EditProps) {
   const [intervalSec, setIntervalSec] = useState(monitor?.interval_sec ?? 60);
   const [timeoutMs, setTimeoutMs] = useState(monitor?.timeout_ms ?? 10000);
 
-  const [httpMethod, setHttpMethod] = useState<HttpMethod>(toHttpMethod(monitor?.http_method ?? 'GET'));
+  const [httpMethod, setHttpMethod] = useState<HttpMethod>(
+    toHttpMethod(monitor?.http_method ?? 'GET'),
+  );
 
-  const [showAdvancedHttp, setShowAdvancedHttp] = useState<boolean>(() => hasAdvancedHttpConfig(monitor));
+  const [showAdvancedHttp, setShowAdvancedHttp] = useState<boolean>(() =>
+    hasAdvancedHttpConfig(monitor),
+  );
 
   const [httpHeadersJson, setHttpHeadersJson] = useState(() => {
     if (!monitor || monitor.type !== 'http') return '';
-    if (!monitor.http_headers_json || Object.keys(monitor.http_headers_json).length === 0) return '';
+    if (!monitor.http_headers_json || Object.keys(monitor.http_headers_json).length === 0)
+      return '';
     return safeJsonStringify(monitor.http_headers_json);
   });
 
@@ -191,7 +205,9 @@ export function MonitorForm(props: CreateProps | EditProps) {
     return monitor.expected_status_json.join(', ');
   });
 
-  const [httpBody, setHttpBody] = useState(() => (monitor?.type === 'http' ? (monitor.http_body ?? '') : ''));
+  const [httpBody, setHttpBody] = useState(() =>
+    monitor?.type === 'http' ? (monitor.http_body ?? '') : '',
+  );
   const [responseKeyword, setResponseKeyword] = useState(() =>
     monitor?.type === 'http' ? (monitor.response_keyword ?? '') : '',
   );
@@ -236,7 +252,8 @@ export function MonitorForm(props: CreateProps | EditProps) {
         // Only change advanced fields when the user explicitly opens that section.
         if (showAdvancedHttp) {
           if (headersParse.ok) {
-            data.http_headers_json = Object.keys(headersParse.value).length > 0 ? headersParse.value : null;
+            data.http_headers_json =
+              Object.keys(headersParse.value).length > 0 ? headersParse.value : null;
           }
 
           if (expectedStatusParse.ok) {
@@ -295,7 +312,13 @@ export function MonitorForm(props: CreateProps | EditProps) {
       )}
       <div>
         <label className={labelClass}>{t('monitor_form.name')}</label>
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required />
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className={inputClass}
+          required
+        />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -383,7 +406,11 @@ export function MonitorForm(props: CreateProps | EditProps) {
       {type === 'http' && (
         <div>
           <label className={labelClass}>{t('monitor_form.method')}</label>
-          <select value={httpMethod} onChange={(e) => setHttpMethod(toHttpMethod(e.target.value))} className={selectClass}>
+          <select
+            value={httpMethod}
+            onChange={(e) => setHttpMethod(toHttpMethod(e.target.value))}
+            className={selectClass}
+          >
             <option value="GET">GET</option>
             <option value="POST">POST</option>
             <option value="PUT">PUT</option>
@@ -440,7 +467,9 @@ export function MonitorForm(props: CreateProps | EditProps) {
                   placeholder={t('monitor_form.headers_placeholder')}
                 />
                 {!headersParse.ok && (
-                  <div className="mt-1 text-xs text-red-600 dark:text-red-400">{headersParse.error}</div>
+                  <div className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    {headersParse.error}
+                  </div>
                 )}
                 <div className={FIELD_HELP_CLASS}>{t('monitor_form.headers_help')}</div>
               </div>
@@ -455,7 +484,9 @@ export function MonitorForm(props: CreateProps | EditProps) {
                   placeholder={t('monitor_form.expected_status_placeholder')}
                 />
                 {!expectedStatusParse.ok && (
-                  <div className="mt-1 text-xs text-red-600 dark:text-red-400">{expectedStatusParse.error}</div>
+                  <div className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    {expectedStatusParse.error}
+                  </div>
                 )}
                 <div className={FIELD_HELP_CLASS}>{t('monitor_form.expected_status_help')}</div>
               </div>
@@ -476,7 +507,9 @@ export function MonitorForm(props: CreateProps | EditProps) {
               </div>
 
               <div>
-                <label className={labelClass}>{t('monitor_form.response_must_contain_optional')}</label>
+                <label className={labelClass}>
+                  {t('monitor_form.response_must_contain_optional')}
+                </label>
                 <input
                   type="text"
                   value={responseKeyword}
@@ -487,7 +520,9 @@ export function MonitorForm(props: CreateProps | EditProps) {
               </div>
 
               <div>
-                <label className={labelClass}>{t('monitor_form.response_must_not_contain_optional')}</label>
+                <label className={labelClass}>
+                  {t('monitor_form.response_must_not_contain_optional')}
+                </label>
                 <input
                   type="text"
                   value={responseForbiddenKeyword}
@@ -497,9 +532,7 @@ export function MonitorForm(props: CreateProps | EditProps) {
                 />
               </div>
 
-              {monitor && (
-                <div className={FIELD_HELP_CLASS}>{t('monitor_form.clear_help')}</div>
-              )}
+              {monitor && <div className={FIELD_HELP_CLASS}>{t('monitor_form.clear_help')}</div>}
             </div>
           )}
         </div>

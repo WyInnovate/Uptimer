@@ -37,13 +37,14 @@ function IncidentCard({
   const { locale, t } = useI18n();
 
   return (
-    <button
-      onClick={onClick}
-      className="ui-panel ui-panel-hover w-full text-left rounded-xl p-5"
-    >
+    <button onClick={onClick} className="ui-panel ui-panel-hover w-full text-left rounded-xl p-5">
       <div className="flex items-start justify-between gap-4 mb-2">
         <h4 className="font-semibold text-slate-900 dark:text-slate-100">{incident.title}</h4>
-        <Badge variant={incident.impact === 'critical' || incident.impact === 'major' ? 'down' : 'paused'}>
+        <Badge
+          variant={
+            incident.impact === 'critical' || incident.impact === 'major' ? 'down' : 'paused'
+          }
+        >
           {incidentImpactLabel(incident.impact, t)}
         </Badge>
       </div>
@@ -52,7 +53,9 @@ function IncidentCard({
         <span>{formatDateTime(incident.started_at, timeZone, locale)}</span>
       </div>
       {incident.message && (
-        <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-2">{incident.message}</p>
+        <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-2">
+          {incident.message}
+        </p>
       )}
     </button>
   );
@@ -72,10 +75,7 @@ function IncidentDetail({
   const { locale, t } = useI18n();
 
   return (
-    <div
-      className={MODAL_OVERLAY_CLASS}
-      onClick={onClose}
-    >
+    <div className={MODAL_OVERLAY_CLASS} onClick={onClose}>
       <div
         className={`${MODAL_PANEL_CLASS} sm:max-w-2xl p-5 sm:p-6`}
         onClick={(e) => e.stopPropagation()}
@@ -86,7 +86,11 @@ function IncidentDetail({
               {incident.title}
             </h2>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={incident.impact === 'critical' || incident.impact === 'major' ? 'down' : 'paused'}>
+              <Badge
+                variant={
+                  incident.impact === 'critical' || incident.impact === 'major' ? 'down' : 'paused'
+                }
+              >
                 {incidentImpactLabel(incident.impact, t)}
               </Badge>
               <Badge variant="info">{incidentStatusLabel(incident.status, t)}</Badge>
@@ -99,26 +103,39 @@ function IncidentDetail({
             className="h-8 w-8 rounded-full !p-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </Button>
         </div>
 
         <div className="space-y-2 sm:space-y-3 text-sm text-slate-600 dark:text-slate-300 mb-4 sm:mb-6 pb-4 sm:pb-6 border-b border-slate-100 dark:border-slate-700">
           <div className="flex flex-col sm:flex-row sm:gap-2">
-            <span className="text-slate-400 dark:text-slate-500 sm:w-20 text-xs sm:text-sm">{t('common.affected')}:</span>
+            <span className="text-slate-400 dark:text-slate-500 sm:w-20 text-xs sm:text-sm">
+              {t('common.affected')}:
+            </span>
             <span className="text-sm">
               {incident.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
             </span>
           </div>
           <div className="flex flex-col sm:flex-row sm:gap-2">
-            <span className="text-slate-400 dark:text-slate-500 sm:w-20 text-xs sm:text-sm">{t('common.started')}:</span>
+            <span className="text-slate-400 dark:text-slate-500 sm:w-20 text-xs sm:text-sm">
+              {t('common.started')}:
+            </span>
             <span className="text-sm">{formatDateTime(incident.started_at, timeZone, locale)}</span>
           </div>
           {incident.resolved_at && (
             <div className="flex flex-col sm:flex-row sm:gap-2">
-              <span className="text-slate-400 dark:text-slate-500 sm:w-20 text-xs sm:text-sm">{t('common.resolved')}:</span>
-              <span className="text-sm">{formatDateTime(incident.resolved_at, timeZone, locale)}</span>
+              <span className="text-slate-400 dark:text-slate-500 sm:w-20 text-xs sm:text-sm">
+                {t('common.resolved')}:
+              </span>
+              <span className="text-sm">
+                {formatDateTime(incident.resolved_at, timeZone, locale)}
+              </span>
             </div>
           )}
         </div>
@@ -137,7 +154,9 @@ function IncidentDetail({
             <div key={u.id} className="border-l-2 border-slate-200 dark:border-slate-600 pl-4">
               <div className="flex items-center gap-3 mb-2">
                 {u.status && <Badge variant="info">{incidentStatusLabel(u.status, t)}</Badge>}
-                <span className="text-xs text-slate-400 dark:text-slate-500">{formatDateTime(u.created_at, timeZone, locale)}</span>
+                <span className="text-xs text-slate-400 dark:text-slate-500">
+                  {formatDateTime(u.created_at, timeZone, locale)}
+                </span>
               </div>
               <Markdown text={u.message} />
             </div>
@@ -201,10 +220,17 @@ export function IncidentHistoryPage() {
               aria-label={t('history.back_aria')}
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
+                />
               </svg>
             </Link>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{t('incident_history.title')}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
+              {t('incident_history.title')}
+            </h1>
           </div>
           <ThemeToggle />
         </div>
@@ -222,13 +248,20 @@ export function IncidentHistoryPage() {
           </div>
         ) : query.isError ? (
           <Card className="p-6 text-center">
-            <p className="text-sm text-red-600 dark:text-red-400">{formatError(query.error) ?? t('history.failed_load_incidents')}</p>
+            <p className="text-sm text-red-600 dark:text-red-400">
+              {formatError(query.error) ?? t('history.failed_load_incidents')}
+            </p>
           </Card>
         ) : all.length > 0 ? (
           <>
             <div className="space-y-3">
               {all.map((it) => (
-                <IncidentCard key={it.id} incident={it} timeZone={timeZone} onClick={() => setSelectedIncident(it)} />
+                <IncidentCard
+                  key={it.id}
+                  incident={it}
+                  timeZone={timeZone}
+                  onClick={() => setSelectedIncident(it)}
+                />
               ))}
             </div>
 
@@ -246,7 +279,9 @@ export function IncidentHistoryPage() {
           </>
         ) : (
           <Card className="p-6 text-center">
-            <p className="text-slate-500 dark:text-slate-400">{t('status_page.no_past_incidents')}</p>
+            <p className="text-slate-500 dark:text-slate-400">
+              {t('status_page.no_past_incidents')}
+            </p>
           </Card>
         )}
       </main>

@@ -42,11 +42,21 @@ async function attemptTcpCheck(config: TcpCheckConfig): Promise<Omit<CheckOutcom
 
     if (raced === 'timeout') {
       socket.close();
-      return { status: 'down', latencyMs, httpStatus: null, error: `Timeout after ${config.timeoutMs}ms` };
+      return {
+        status: 'down',
+        latencyMs,
+        httpStatus: null,
+        error: `Timeout after ${config.timeoutMs}ms`,
+      };
     }
 
     if (typeof raced === 'object' && raced && 'err' in raced) {
-      return { status: 'down', latencyMs, httpStatus: null, error: toErrorMessage((raced as { err: unknown }).err) };
+      return {
+        status: 'down',
+        latencyMs,
+        httpStatus: null,
+        error: toErrorMessage((raced as { err: unknown }).err),
+      };
     }
 
     socket.close();
@@ -101,4 +111,3 @@ export async function runTcpCheck(config: TcpCheckConfig): Promise<CheckOutcome>
     }
   );
 }
-

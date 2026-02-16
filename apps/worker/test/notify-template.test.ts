@@ -64,23 +64,33 @@ describe('notify/template', () => {
       rows: ['first', 'second'],
     });
 
-    expect(renderJsonTemplate({ deep: { deeper: { value: 'x' } } }, vars, { maxDepth: 1 })).toEqual({
-      deep: {
-        deeper: null,
+    expect(renderJsonTemplate({ deep: { deeper: { value: 'x' } } }, vars, { maxDepth: 1 })).toEqual(
+      {
+        deep: {
+          deeper: null,
+        },
       },
-    });
+    );
 
     expect(renderJsonTemplate(123, vars)).toBe(123);
   });
 
   it('builds default message templates for built-in event types', () => {
     expect(defaultMessageForEvent('monitor.down', vars)).toContain('Monitor DOWN: API');
-    expect(defaultMessageForEvent('monitor.up', vars)).toBe('Monitor UP: API (https://api.example.com/health)');
-    expect(defaultMessageForEvent('incident.created', vars)).toBe('Incident created: API outage (impact: major)');
+    expect(defaultMessageForEvent('monitor.up', vars)).toBe(
+      'Monitor UP: API (https://api.example.com/health)',
+    );
+    expect(defaultMessageForEvent('incident.created', vars)).toBe(
+      'Incident created: API outage (impact: major)',
+    );
     expect(defaultMessageForEvent('incident.updated', vars)).toContain('Mitigation applied');
     expect(defaultMessageForEvent('incident.resolved', vars)).toBe('Incident resolved: API outage');
-    expect(defaultMessageForEvent('maintenance.started', vars)).toBe('Maintenance started: DB maintenance');
-    expect(defaultMessageForEvent('maintenance.ended', vars)).toBe('Maintenance ended: DB maintenance');
+    expect(defaultMessageForEvent('maintenance.started', vars)).toBe(
+      'Maintenance started: DB maintenance',
+    );
+    expect(defaultMessageForEvent('maintenance.ended', vars)).toBe(
+      'Maintenance ended: DB maintenance',
+    );
     expect(defaultMessageForEvent('test.ping', vars)).toBe('Uptimer test notification');
     expect(defaultMessageForEvent('custom.event', vars)).toBe('Uptimer event: monitor.down');
     expect(defaultMessageForEvent('custom.event', {})).toBe('Uptimer notification');
@@ -91,6 +101,8 @@ describe('notify/template', () => {
     circular.self = circular;
 
     expect(renderStringTemplate('{{circular}}', { circular })).toBe('[object Object]');
-    expect(defaultMessageForEvent('custom.event', { event: circular })).toBe('Uptimer event: [object Object]');
+    expect(defaultMessageForEvent('custom.event', { event: circular })).toBe(
+      'Uptimer event: [object Object]',
+    );
   });
 });

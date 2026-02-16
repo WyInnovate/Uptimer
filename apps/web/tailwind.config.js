@@ -42,7 +42,7 @@ export default {
         ],
       },
       boxShadow: {
-        'soft': '0 2px 8px -2px rgba(0, 0, 0, 0.05), 0 4px 16px -4px rgba(0, 0, 0, 0.1)',
+        soft: '0 2px 8px -2px rgba(0, 0, 0, 0.05), 0 4px 16px -4px rgba(0, 0, 0, 0.1)',
         'soft-lg': '0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 8px 24px -4px rgba(0, 0, 0, 0.12)',
         'glow-green': '0 0 20px -5px rgba(16, 185, 129, 0.4)',
         'glow-red': '0 0 20px -5px rgba(239, 68, 68, 0.4)',
@@ -63,7 +63,7 @@ export default {
         },
       },
       borderRadius: {
-        'xl': '1rem',
+        xl: '1rem',
         '2xl': '1.25rem',
       },
     },

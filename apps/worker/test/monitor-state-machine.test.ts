@@ -103,7 +103,13 @@ describe('computeNextState', () => {
   it('retains current state on unknown checks and clears streaks', () => {
     const { next, outageAction } = computeNextState(
       snapshot({ status: 'up', consecutiveFailures: 1, consecutiveSuccesses: 2 }),
-      { status: 'unknown', latencyMs: null, error: 'network jitter', httpStatus: null, attempts: 1 },
+      {
+        status: 'unknown',
+        latencyMs: null,
+        error: 'network jitter',
+        httpStatus: null,
+        attempts: 1,
+      },
       CHECKED_AT,
     );
 

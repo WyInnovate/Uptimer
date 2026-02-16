@@ -5,7 +5,12 @@ import { getDb, monitors } from '@uptimer/db';
 
 import type { Env } from '../env';
 import { computePublicStatusPayload } from '../public/status';
-import { applyStatusCacheHeaders, readStatusSnapshot, toSnapshotPayload, writeStatusSnapshot } from '../snapshots';
+import {
+  applyStatusCacheHeaders,
+  readStatusSnapshot,
+  toSnapshotPayload,
+  writeStatusSnapshot,
+} from '../snapshots';
 
 import { AppError } from '../middleware/errors';
 import { cachePublic } from '../middleware/cache-public';
@@ -54,7 +59,6 @@ async function readStaleStatusSnapshot(
     return null;
   }
 }
-
 
 export const publicRoutes = new Hono<{ Bindings: Env }>();
 
@@ -157,7 +161,7 @@ function buildUnknownIntervals(
   rangeStart: number,
   rangeEnd: number,
   intervalSec: number,
-  checks: Array<{ checked_at: number; status: string }>
+  checks: Array<{ checked_at: number; status: string }>,
 ): Interval[] {
   if (rangeEnd <= rangeStart) return [];
   if (!Number.isFinite(intervalSec) || intervalSec <= 0) {
@@ -219,7 +223,9 @@ function buildUnknownIntervals(
   return unknown;
 }
 
-function rangeToSeconds(range: z.infer<typeof uptimeRangeSchema> | z.infer<typeof latencyRangeSchema>): number {
+function rangeToSeconds(
+  range: z.infer<typeof uptimeRangeSchema> | z.infer<typeof latencyRangeSchema>,
+): number {
   switch (range) {
     case '24h':
       return 24 * 60 * 60;
@@ -264,7 +270,9 @@ type IncidentMonitorLinkRow = {
   monitor_id: number;
 };
 
-function toIncidentStatus(value: string | null): 'investigating' | 'identified' | 'monitoring' | 'resolved' {
+function toIncidentStatus(
+  value: string | null,
+): 'investigating' | 'identified' | 'monitoring' | 'resolved' {
   switch (value) {
     case 'investigating':
     case 'identified':
@@ -298,7 +306,11 @@ function incidentUpdateRowToApi(row: IncidentUpdateRow) {
   };
 }
 
-function incidentRowToApi(row: IncidentRow, updates: IncidentUpdateRow[] = [], monitorIds: number[] = []) {
+function incidentRowToApi(
+  row: IncidentRow,
+  updates: IncidentUpdateRow[] = [],
+  monitorIds: number[] = [],
+) {
   return {
     id: row.id,
     title: row.title,
@@ -314,7 +326,7 @@ function incidentRowToApi(row: IncidentRow, updates: IncidentUpdateRow[] = [], m
 
 async function listIncidentUpdatesByIncidentId(
   db: D1Database,
-  incidentIds: number[]
+  incidentIds: number[],
 ): Promise<Map<number, IncidentUpdateRow[]>> {
   const byIncident = new Map<number, IncidentUpdateRow[]>();
   if (incidentIds.length === 0) return byIncident;
@@ -327,7 +339,10 @@ async function listIncidentUpdatesByIncidentId(
     ORDER BY incident_id, created_at, id
   `;
 
-  const { results } = await db.prepare(sql).bind(...incidentIds).all<IncidentUpdateRow>();
+  const { results } = await db
+    .prepare(sql)
+    .bind(...incidentIds)
+    .all<IncidentUpdateRow>();
   for (const r of results ?? []) {
     const existing = byIncident.get(r.incident_id) ?? [];
     existing.push(r);
@@ -337,7 +352,10 @@ async function listIncidentUpdatesByIncidentId(
   return byIncident;
 }
 
-async function listIncidentMonitorIdsByIncidentId(db: D1Database, incidentIds: number[]): Promise<Map<number, number[]>> {
+async function listIncidentMonitorIdsByIncidentId(
+  db: D1Database,
+  incidentIds: number[],
+): Promise<Map<number, number[]>> {
   const byIncident = new Map<number, number[]>();
   if (incidentIds.length === 0) return byIncident;
 
@@ -349,7 +367,10 @@ async function listIncidentMonitorIdsByIncidentId(db: D1Database, incidentIds: n
     ORDER BY incident_id, monitor_id
   `;
 
-  const { results } = await db.prepare(sql).bind(...incidentIds).all<IncidentMonitorLinkRow>();
+  const { results } = await db
+    .prepare(sql)
+    .bind(...incidentIds)
+    .all<IncidentMonitorLinkRow>();
   for (const r of results ?? []) {
     const existing = byIncident.get(r.incident_id) ?? [];
     existing.push(r.monitor_id);
@@ -387,7 +408,7 @@ function maintenanceWindowRowToApi(row: MaintenanceWindowRow, monitorIds: number
 
 async function listMaintenanceWindowMonitorIdsByWindowId(
   db: D1Database,
-  windowIds: number[]
+  windowIds: number[],
 ): Promise<Map<number, number[]>> {
   const byWindow = new Map<number, number[]>();
   if (windowIds.length === 0) return byWindow;
@@ -400,7 +421,10 @@ async function listMaintenanceWindowMonitorIdsByWindowId(
     ORDER BY maintenance_window_id, monitor_id
   `;
 
-  const { results } = await db.prepare(sql).bind(...windowIds).all<MaintenanceWindowMonitorLinkRow>();
+  const { results } = await db
+    .prepare(sql)
+    .bind(...windowIds)
+    .all<MaintenanceWindowMonitorLinkRow>();
   for (const r of results ?? []) {
     const existing = byWindow.get(r.maintenance_window_id) ?? [];
     existing.push(r.monitor_id);
@@ -462,10 +486,24 @@ publicRoutes.get('/status', async (c) => {
 });
 
 publicRoutes.get('/incidents', async (c) => {
-  const limit = z.coerce.number().int().min(1).max(200).optional().default(20).parse(c.req.query('limit'));
+  const limit = z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(200)
+    .optional()
+    .default(20)
+    .parse(c.req.query('limit'));
   const cursor = z.coerce.number().int().positive().optional().parse(c.req.query('cursor'));
   const resolvedOnly =
-    z.coerce.number().int().min(0).max(1).optional().default(0).parse(c.req.query('resolved_only')) === 1;
+    z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(1)
+      .optional()
+      .default(0)
+      .parse(c.req.query('resolved_only')) === 1;
 
   let active: IncidentRow[] = [];
   let remaining = limit;
@@ -478,7 +516,7 @@ publicRoutes.get('/incidents', async (c) => {
         WHERE status != 'resolved'
         ORDER BY started_at DESC, id DESC
         LIMIT ?1
-      `
+      `,
     )
       .bind(limit)
       .all<IncidentRow>();
@@ -506,7 +544,7 @@ publicRoutes.get('/incidents', async (c) => {
               AND id < ?2
             ORDER BY id DESC
             LIMIT ?1
-          `
+          `,
         )
           .bind(resolvedLimitPlusOne, cursor)
           .all<IncidentRow>()
@@ -515,7 +553,7 @@ publicRoutes.get('/incidents', async (c) => {
             ${baseSql}
             ORDER BY id DESC
             LIMIT ?1
-          `
+          `,
         )
           .bind(resolvedLimitPlusOne)
           .all<IncidentRow>();
@@ -532,23 +570,34 @@ publicRoutes.get('/incidents', async (c) => {
   const combined = [...active, ...resolved];
   const updatesByIncidentId = await listIncidentUpdatesByIncidentId(
     c.env.DB,
-    combined.map((r) => r.id)
+    combined.map((r) => r.id),
   );
   const monitorIdsByIncidentId = await listIncidentMonitorIdsByIncidentId(
     c.env.DB,
-    combined.map((r) => r.id)
+    combined.map((r) => r.id),
   );
 
   return c.json({
     incidents: combined.map((r) =>
-      incidentRowToApi(r, updatesByIncidentId.get(r.id) ?? [], monitorIdsByIncidentId.get(r.id) ?? [])
+      incidentRowToApi(
+        r,
+        updatesByIncidentId.get(r.id) ?? [],
+        monitorIdsByIncidentId.get(r.id) ?? [],
+      ),
     ),
     next_cursor,
   });
 });
 
 publicRoutes.get('/maintenance-windows', async (c) => {
-  const limit = z.coerce.number().int().min(1).max(200).optional().default(20).parse(c.req.query('limit'));
+  const limit = z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(200)
+    .optional()
+    .default(20)
+    .parse(c.req.query('limit'));
   const cursor = z.coerce.number().int().positive().optional().parse(c.req.query('cursor'));
 
   const now = Math.floor(Date.now() / 1000);
@@ -567,7 +616,7 @@ publicRoutes.get('/maintenance-windows', async (c) => {
             AND id < ?3
           ORDER BY id DESC
           LIMIT ?2
-        `
+        `,
       )
         .bind(now, limitPlusOne, cursor)
         .all<MaintenanceWindowRow>()
@@ -576,7 +625,7 @@ publicRoutes.get('/maintenance-windows', async (c) => {
           ${baseSql}
           ORDER BY id DESC
           LIMIT ?2
-        `
+        `,
       )
         .bind(now, limitPlusOne)
         .all<MaintenanceWindowRow>();
@@ -592,12 +641,12 @@ publicRoutes.get('/maintenance-windows', async (c) => {
 
   const monitorIdsByWindowId = await listMaintenanceWindowMonitorIdsByWindowId(
     c.env.DB,
-    windows.map((w) => w.id)
+    windows.map((w) => w.id),
   );
 
   return c.json({
     maintenance_windows: windows.map((w) =>
-      maintenanceWindowRowToApi(w, monitorIdsByWindowId.get(w.id) ?? [])
+      maintenanceWindowRowToApi(w, monitorIdsByWindowId.get(w.id) ?? []),
     ),
     next_cursor,
   });
@@ -613,7 +662,7 @@ publicRoutes.get('/monitors/:id/day-context', async (c) => {
       SELECT id
       FROM monitors
       WHERE id = ?1 AND is_active = 1
-    `
+    `,
   )
     .bind(id)
     .first<{ id: number }>();
@@ -632,7 +681,7 @@ publicRoutes.get('/monitors/:id/day-context', async (c) => {
         AND mw.ends_at > ?2
       ORDER BY mw.starts_at ASC, mw.id ASC
       LIMIT 50
-    `
+    `,
   )
     .bind(id, dayStartAt, dayEndAt)
     .all<MaintenanceWindowRow>();
@@ -640,7 +689,7 @@ publicRoutes.get('/monitors/:id/day-context', async (c) => {
   const maintenance = maintenanceRows ?? [];
   const monitorIdsByWindowId = await listMaintenanceWindowMonitorIdsByWindowId(
     c.env.DB,
-    maintenance.map((w) => w.id)
+    maintenance.map((w) => w.id),
   );
 
   const { results: incidentRows } = await c.env.DB.prepare(
@@ -653,7 +702,7 @@ publicRoutes.get('/monitors/:id/day-context', async (c) => {
         AND (i.resolved_at IS NULL OR i.resolved_at > ?2)
       ORDER BY i.started_at ASC, i.id ASC
       LIMIT 50
-    `
+    `,
   )
     .bind(id, dayStartAt, dayEndAt)
     .all<IncidentRow>();
@@ -661,21 +710,25 @@ publicRoutes.get('/monitors/:id/day-context', async (c) => {
   const incidents = incidentRows ?? [];
   const updatesByIncidentId = await listIncidentUpdatesByIncidentId(
     c.env.DB,
-    incidents.map((r) => r.id)
+    incidents.map((r) => r.id),
   );
   const monitorIdsByIncidentId = await listIncidentMonitorIdsByIncidentId(
     c.env.DB,
-    incidents.map((r) => r.id)
+    incidents.map((r) => r.id),
   );
 
   return c.json({
     day_start_at: dayStartAt,
     day_end_at: dayEndAt,
     maintenance_windows: maintenance.map((w) =>
-      maintenanceWindowRowToApi(w, monitorIdsByWindowId.get(w.id) ?? [])
+      maintenanceWindowRowToApi(w, monitorIdsByWindowId.get(w.id) ?? []),
     ),
     incidents: incidents.map((r) =>
-      incidentRowToApi(r, updatesByIncidentId.get(r.id) ?? [], monitorIdsByIncidentId.get(r.id) ?? [])
+      incidentRowToApi(
+        r,
+        updatesByIncidentId.get(r.id) ?? [],
+        monitorIdsByIncidentId.get(r.id) ?? [],
+      ),
     ),
   });
 });
@@ -689,7 +742,7 @@ publicRoutes.get('/monitors/:id/latency', async (c) => {
       SELECT id, name
       FROM monitors
       WHERE id = ?1 AND is_active = 1
-    `
+    `,
   )
     .bind(id)
     .first<{ id: number; name: string }>();
@@ -710,7 +763,7 @@ publicRoutes.get('/monitors/:id/latency', async (c) => {
         AND checked_at >= ?2
         AND checked_at <= ?3
       ORDER BY checked_at
-    `
+    `,
   )
     .bind(id, rangeStart, rangeEnd)
     .all<{ checked_at: number; status: string; latency_ms: number | null }>();
@@ -752,7 +805,7 @@ publicRoutes.get('/monitors/:id/uptime', async (c) => {
       SELECT id, name, interval_sec, created_at
       FROM monitors
       WHERE id = ?1 AND is_active = 1
-    `
+    `,
   )
     .bind(id)
     .first<{ id: number; name: string; interval_sec: number; created_at: number }>();
@@ -776,7 +829,7 @@ publicRoutes.get('/monitors/:id/uptime', async (c) => {
         AND started_at < ?2
         AND (ended_at IS NULL OR ended_at > ?3)
       ORDER BY started_at
-    `
+    `,
   )
     .bind(id, rangeEnd, rangeStart)
     .all<OutageRow>();
@@ -788,7 +841,7 @@ publicRoutes.get('/monitors/:id/uptime', async (c) => {
         const end = Math.min(r.ended_at ?? rangeEnd, rangeEnd);
         return { start, end };
       })
-      .filter((it) => it.end > it.start)
+      .filter((it) => it.end > it.start),
   );
   const downtime_sec = sumIntervals(downtimeIntervals);
 
@@ -801,7 +854,7 @@ publicRoutes.get('/monitors/:id/uptime', async (c) => {
         AND checked_at >= ?2
         AND checked_at < ?3
       ORDER BY checked_at
-    `
+    `,
   )
     .bind(id, checksStart, rangeEnd)
     .all<{ checked_at: number; status: string }>();
@@ -810,13 +863,13 @@ publicRoutes.get('/monitors/:id/uptime', async (c) => {
     rangeStart,
     rangeEnd,
     monitor.interval_sec,
-    (checkRows ?? []).map((r) => ({ checked_at: r.checked_at, status: toCheckStatus(r.status) }))
+    (checkRows ?? []).map((r) => ({ checked_at: r.checked_at, status: toCheckStatus(r.status) })),
   );
 
   // Unknown time is treated as "unavailable" per Application.md; exclude overlap with downtime to avoid double counting.
   const unknown_sec = Math.max(
     0,
-    sumIntervals(unknownIntervals) - overlapSeconds(unknownIntervals, downtimeIntervals)
+    sumIntervals(unknownIntervals) - overlapSeconds(unknownIntervals, downtimeIntervals),
   );
 
   const unavailable_sec = Math.min(total_sec, downtime_sec + unknown_sec);
@@ -839,6 +892,7 @@ publicRoutes.get('/monitors/:id/uptime', async (c) => {
 async function computePartialUptimeTotals(
   db: D1Database,
   monitorId: number,
+  intervalSec: number,
   rangeStart: number,
   rangeEnd: number,
 ): Promise<{ total_sec: number; downtime_sec: number; unknown_sec: number; uptime_sec: number }> {
@@ -847,7 +901,7 @@ async function computePartialUptimeTotals(
     return { total_sec: 0, downtime_sec: 0, unknown_sec: 0, uptime_sec: 0 };
   }
 
-  const { results } = await db
+  const { results: outageRows } = await db
     .prepare(
       `
       SELECT started_at, ended_at
@@ -861,37 +915,44 @@ async function computePartialUptimeTotals(
     .bind(monitorId, rangeEnd, rangeStart)
     .all<{ started_at: number; ended_at: number | null }>();
 
-  let downtime_sec = 0;
-  let curStart: number | null = null;
-  let curEnd: number | null = null;
+  const downtimeIntervals = mergeIntervals(
+    (outageRows ?? [])
+      .map((r) => ({
+        start: Math.max(r.started_at, rangeStart),
+        end: Math.min(r.ended_at ?? rangeEnd, rangeEnd),
+      }))
+      .filter((it) => it.end > it.start),
+  );
+  const downtime_sec = sumIntervals(downtimeIntervals);
 
-  for (const r of results ?? []) {
-    const s = Math.max(r.started_at, rangeStart);
-    const e = Math.min(r.ended_at ?? rangeEnd, rangeEnd);
-    if (e <= s) continue;
+  const checksStart = rangeStart - intervalSec * 2;
+  const { results: checkRows } = await db
+    .prepare(
+      `
+      SELECT checked_at, status
+      FROM check_results
+      WHERE monitor_id = ?1
+        AND checked_at >= ?2
+        AND checked_at < ?3
+      ORDER BY checked_at
+    `,
+    )
+    .bind(monitorId, checksStart, rangeEnd)
+    .all<{ checked_at: number; status: string }>();
 
-    if (curStart === null || curEnd === null) {
-      curStart = s;
-      curEnd = e;
-      continue;
-    }
+  const unknownIntervals = buildUnknownIntervals(
+    rangeStart,
+    rangeEnd,
+    intervalSec,
+    (checkRows ?? []).map((r) => ({ checked_at: r.checked_at, status: toCheckStatus(r.status) })),
+  );
+  const unknown_sec = Math.max(
+    0,
+    sumIntervals(unknownIntervals) - overlapSeconds(unknownIntervals, downtimeIntervals),
+  );
 
-    if (s <= curEnd) {
-      curEnd = Math.max(curEnd, e);
-      continue;
-    }
-
-    downtime_sec += Math.max(0, curEnd - curStart);
-    curStart = s;
-    curEnd = e;
-  }
-
-  if (curStart !== null && curEnd !== null) {
-    downtime_sec += Math.max(0, curEnd - curStart);
-  }
-
-  const unknown_sec = 0;
-  const uptime_sec = Math.max(0, total_sec - Math.min(total_sec, downtime_sec + unknown_sec));
+  const unavailable_sec = Math.min(total_sec, downtime_sec + unknown_sec);
+  const uptime_sec = Math.max(0, total_sec - unavailable_sec);
 
   return { total_sec, downtime_sec, unknown_sec, uptime_sec };
 }
@@ -907,12 +968,12 @@ publicRoutes.get('/analytics/uptime', async (c) => {
 
   const { results: monitorRows } = await c.env.DB.prepare(
     `
-      SELECT id, name, type
+      SELECT id, name, type, interval_sec
       FROM monitors
       WHERE is_active = 1
       ORDER BY id
-    `
-  ).all<{ id: number; name: string; type: string }>();
+    `,
+  ).all<{ id: number; name: string; type: string; interval_sec: number }>();
 
   const monitors = monitorRows ?? [];
 
@@ -927,7 +988,7 @@ publicRoutes.get('/analytics/uptime', async (c) => {
       FROM monitor_daily_rollups
       WHERE day_start_at >= ?1 AND day_start_at < ?2
       GROUP BY monitor_id
-    `
+    `,
   )
     .bind(rangeStart, rangeEndFullDays)
     .all<{
@@ -961,12 +1022,22 @@ publicRoutes.get('/analytics/uptime', async (c) => {
 
   const out = await Promise.all(
     monitors.map(async (m) => {
-      const rollupTotals =
-        byMonitorId.get(m.id) ?? { total_sec: 0, downtime_sec: 0, unknown_sec: 0, uptime_sec: 0 };
+      const rollupTotals = byMonitorId.get(m.id) ?? {
+        total_sec: 0,
+        downtime_sec: 0,
+        unknown_sec: 0,
+        uptime_sec: 0,
+      };
 
       const partialTotals =
         partialEnd > partialStart
-          ? await computePartialUptimeTotals(c.env.DB, m.id, partialStart, partialEnd)
+          ? await computePartialUptimeTotals(
+              c.env.DB,
+              m.id,
+              m.interval_sec,
+              partialStart,
+              partialEnd,
+            )
           : { total_sec: 0, downtime_sec: 0, unknown_sec: 0, uptime_sec: 0 };
 
       const totals = {
@@ -1011,11 +1082,19 @@ publicRoutes.get('/analytics/uptime', async (c) => {
 publicRoutes.get('/monitors/:id/outages', async (c) => {
   const id = z.coerce.number().int().positive().parse(c.req.param('id'));
   const range = z.enum(['30d']).optional().default('30d').parse(c.req.query('range'));
-  const limit = z.coerce.number().int().min(1).max(200).optional().default(200).parse(c.req.query('limit'));
+  const limit = z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(200)
+    .optional()
+    .default(200)
+    .parse(c.req.query('limit'));
   const cursor = z.coerce.number().int().positive().optional().parse(c.req.query('cursor'));
 
-  const monitor = await c.env.DB
-    .prepare('SELECT id, created_at FROM monitors WHERE id = ?1 AND is_active = 1')
+  const monitor = await c.env.DB.prepare(
+    'SELECT id, created_at FROM monitors WHERE id = ?1 AND is_active = 1',
+  )
     .bind(id)
     .first<{ id: number; created_at: number }>();
   if (!monitor) {
@@ -1037,31 +1116,41 @@ publicRoutes.get('/monitors/:id/outages', async (c) => {
 
   const take = limit + 1;
   const { results } = cursor
-    ? await c.env.DB
-        .prepare(
-          `
+    ? await c.env.DB.prepare(
+        `
             ${sqlBase}
               AND id < ?4
             ORDER BY id DESC
             LIMIT ?5
-          `
-        )
+          `,
+      )
         .bind(id, rangeEnd, rangeStart, cursor, take)
-        .all<{ id: number; started_at: number; ended_at: number | null; initial_error: string | null; last_error: string | null }>()
-    : await c.env.DB
-        .prepare(
-          `
+        .all<{
+          id: number;
+          started_at: number;
+          ended_at: number | null;
+          initial_error: string | null;
+          last_error: string | null;
+        }>()
+    : await c.env.DB.prepare(
+        `
             ${sqlBase}
             ORDER BY id DESC
             LIMIT ?4
-          `
-        )
+          `,
+      )
         .bind(id, rangeEnd, rangeStart, take)
-        .all<{ id: number; started_at: number; ended_at: number | null; initial_error: string | null; last_error: string | null }>();
+        .all<{
+          id: number;
+          started_at: number;
+          ended_at: number | null;
+          initial_error: string | null;
+          last_error: string | null;
+        }>();
 
   const rows = results ?? [];
   const page = rows.slice(0, limit);
-  const next_cursor = rows.length > limit ? page[page.length - 1]?.id ?? null : null;
+  const next_cursor = rows.length > limit ? (page[page.length - 1]?.id ?? null) : null;
 
   return c.json({
     range: range as '30d',
@@ -1084,4 +1173,3 @@ publicRoutes.get('/health', async (c) => {
   await db.select({ id: monitors.id }).from(monitors).limit(1).all();
   return c.json({ ok: true });
 });
-

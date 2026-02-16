@@ -43,10 +43,22 @@ function toCsvRow(values: Array<string | number | null>): string {
 
 adminExportsRoutes.get('/monitors/:id/outages.csv', async (c) => {
   const id = z.coerce.number().int().positive().parse(c.req.param('id'));
-  const range = exportRangeSchema.optional().default('30d').parse(c.req.query('range')) as UptimeRange;
-  const limit = z.coerce.number().int().min(1).max(10000).optional().default(5000).parse(c.req.query('limit'));
+  const range = exportRangeSchema
+    .optional()
+    .default('30d')
+    .parse(c.req.query('range')) as UptimeRange;
+  const limit = z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(10000)
+    .optional()
+    .default(5000)
+    .parse(c.req.query('limit'));
 
-  const monitor = await c.env.DB.prepare(`SELECT id, created_at FROM monitors WHERE id = ?1`).bind(id).first<{ id: number; created_at: number }>();
+  const monitor = await c.env.DB.prepare(`SELECT id, created_at FROM monitors WHERE id = ?1`)
+    .bind(id)
+    .first<{ id: number; created_at: number }>();
   if (!monitor) throw new AppError(404, 'NOT_FOUND', 'Monitor not found');
 
   const { start: rangeStartBase, end: rangeEnd } = computeRange(range);
@@ -61,10 +73,16 @@ adminExportsRoutes.get('/monitors/:id/outages.csv', async (c) => {
         AND (ended_at IS NULL OR ended_at > ?3)
       ORDER BY id DESC
       LIMIT ?4
-    `
+    `,
   )
     .bind(id, rangeEnd, rangeStart, limit)
-    .all<{ id: number; started_at: number; ended_at: number | null; initial_error: string | null; last_error: string | null }>();
+    .all<{
+      id: number;
+      started_at: number;
+      ended_at: number | null;
+      initial_error: string | null;
+      last_error: string | null;
+    }>();
 
   let csv = '';
   csv += toCsvRow(['id', 'monitor_id', 'started_at', 'ended_at', 'initial_error', 'last_error']);
@@ -82,10 +100,22 @@ adminExportsRoutes.get('/monitors/:id/outages.csv', async (c) => {
 
 adminExportsRoutes.get('/monitors/:id/check-results.csv', async (c) => {
   const id = z.coerce.number().int().positive().parse(c.req.param('id'));
-  const range = exportChecksRangeSchema.optional().default('24h').parse(c.req.query('range')) as UptimeRange;
-  const limit = z.coerce.number().int().min(1).max(20000).optional().default(10000).parse(c.req.query('limit'));
+  const range = exportChecksRangeSchema
+    .optional()
+    .default('24h')
+    .parse(c.req.query('range')) as UptimeRange;
+  const limit = z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(20000)
+    .optional()
+    .default(10000)
+    .parse(c.req.query('limit'));
 
-  const monitor = await c.env.DB.prepare(`SELECT id, created_at FROM monitors WHERE id = ?1`).bind(id).first<{ id: number; created_at: number }>();
+  const monitor = await c.env.DB.prepare(`SELECT id, created_at FROM monitors WHERE id = ?1`)
+    .bind(id)
+    .first<{ id: number; created_at: number }>();
   if (!monitor) throw new AppError(404, 'NOT_FOUND', 'Monitor not found');
 
   const { start: rangeStartBase, end: rangeEnd } = computeRange(range);
@@ -100,7 +130,7 @@ adminExportsRoutes.get('/monitors/:id/check-results.csv', async (c) => {
         AND checked_at < ?3
       ORDER BY checked_at
       LIMIT ?4
-    `
+    `,
   )
     .bind(id, rangeStart, rangeEnd, limit)
     .all<{
@@ -114,9 +144,27 @@ adminExportsRoutes.get('/monitors/:id/check-results.csv', async (c) => {
     }>();
 
   let csv = '';
-  csv += toCsvRow(['monitor_id', 'checked_at', 'status', 'latency_ms', 'http_status', 'error', 'location', 'attempt']);
+  csv += toCsvRow([
+    'monitor_id',
+    'checked_at',
+    'status',
+    'latency_ms',
+    'http_status',
+    'error',
+    'location',
+    'attempt',
+  ]);
   for (const r of results ?? []) {
-    csv += toCsvRow([id, r.checked_at, r.status, r.latency_ms, r.http_status, r.error, r.location, r.attempt]);
+    csv += toCsvRow([
+      id,
+      r.checked_at,
+      r.status,
+      r.latency_ms,
+      r.http_status,
+      r.error,
+      r.location,
+      r.attempt,
+    ]);
   }
 
   return new Response(csv, {
@@ -128,8 +176,18 @@ adminExportsRoutes.get('/monitors/:id/check-results.csv', async (c) => {
 });
 
 adminExportsRoutes.get('/incidents.csv', async (c) => {
-  const range = exportRangeSchema.optional().default('90d').parse(c.req.query('range')) as UptimeRange;
-  const limit = z.coerce.number().int().min(1).max(5000).optional().default(2000).parse(c.req.query('limit'));
+  const range = exportRangeSchema
+    .optional()
+    .default('90d')
+    .parse(c.req.query('range')) as UptimeRange;
+  const limit = z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(5000)
+    .optional()
+    .default(2000)
+    .parse(c.req.query('limit'));
 
   const { start: rangeStart, end: rangeEnd } = computeRange(range);
 
@@ -140,7 +198,7 @@ adminExportsRoutes.get('/incidents.csv', async (c) => {
       WHERE started_at < ?2 AND (resolved_at IS NULL OR resolved_at > ?1)
       ORDER BY id DESC
       LIMIT ?3
-    `
+    `,
   )
     .bind(rangeStart, rangeEnd, limit)
     .all<{
@@ -165,7 +223,7 @@ adminExportsRoutes.get('/incidents.csv', async (c) => {
         FROM incident_monitors
         WHERE incident_id IN (${placeholders})
         ORDER BY incident_id, monitor_id
-      `
+      `,
     )
       .bind(...incidentIds)
       .all<{ incident_id: number; monitor_id: number }>();
@@ -178,10 +236,28 @@ adminExportsRoutes.get('/incidents.csv', async (c) => {
   }
 
   let csv = '';
-  csv += toCsvRow(['id', 'title', 'status', 'impact', 'started_at', 'resolved_at', 'monitor_ids', 'message']);
+  csv += toCsvRow([
+    'id',
+    'title',
+    'status',
+    'impact',
+    'started_at',
+    'resolved_at',
+    'monitor_ids',
+    'message',
+  ]);
   for (const r of incidents) {
     const monitorIds = monitorIdsByIncidentId.get(r.id) ?? [];
-    csv += toCsvRow([r.id, r.title, r.status, r.impact, r.started_at, r.resolved_at, JSON.stringify(monitorIds), r.message]);
+    csv += toCsvRow([
+      r.id,
+      r.title,
+      r.status,
+      r.impact,
+      r.started_at,
+      r.resolved_at,
+      JSON.stringify(monitorIds),
+      r.message,
+    ]);
   }
 
   return new Response(csv, {
@@ -191,4 +267,3 @@ adminExportsRoutes.get('/incidents.csv', async (c) => {
     },
   });
 });
-

@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-export const incidentStatusSchema = z.enum(['investigating', 'identified', 'monitoring', 'resolved']);
+export const incidentStatusSchema = z.enum([
+  'investigating',
+  'identified',
+  'monitoring',
+  'resolved',
+]);
 export const incidentImpactSchema = z.enum(['none', 'minor', 'major', 'critical']);
 
 export const createIncidentInputSchema = z.object({

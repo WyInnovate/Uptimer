@@ -30,4 +30,3 @@ function normalizeAdminPath(raw: unknown): string {
 export const ADMIN_PATH = normalizeAdminPath(import.meta.env.VITE_ADMIN_PATH);
 export const ADMIN_LOGIN_PATH = `${ADMIN_PATH}/login`;
 export const ADMIN_ANALYTICS_PATH = `${ADMIN_PATH}/analytics`;
-

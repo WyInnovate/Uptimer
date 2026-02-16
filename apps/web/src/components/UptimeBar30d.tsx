@@ -96,7 +96,17 @@ interface TooltipState {
   position: { x: number; y: number };
 }
 
-function Tooltip({ day, position, ratingLevel, timeZone }: { day: UptimeDay; position: { x: number; y: number }; ratingLevel: UptimeRatingLevel; timeZone: string }) {
+function Tooltip({
+  day,
+  position,
+  ratingLevel,
+  timeZone,
+}: {
+  day: UptimeDay;
+  position: { x: number; y: number };
+  ratingLevel: UptimeRatingLevel;
+  timeZone: string;
+}) {
   const { locale, t } = useI18n();
 
   return (
@@ -110,13 +120,22 @@ function Tooltip({ day, position, ratingLevel, timeZone }: { day: UptimeDay; pos
     >
       <div className="font-medium mb-1">{formatDay(day.day_start_at, timeZone, locale)}</div>
       <div className="flex items-center gap-2">
-        <span className={`w-2 h-2 rounded-full ${getUptimeColorClasses(day.uptime_pct, ratingLevel)}`} />
+        <span
+          className={`w-2 h-2 rounded-full ${getUptimeColorClasses(day.uptime_pct, ratingLevel)}`}
+        />
         <span>
-          {day.uptime_pct === null ? t('uptime.no_data') : `${day.uptime_pct.toFixed(3)}%`} {t('uptime.uptime')}
+          {day.uptime_pct === null ? t('uptime.no_data') : `${day.uptime_pct.toFixed(3)}%`}{' '}
+          {t('uptime.uptime')}
         </span>
       </div>
-      <div className="mt-1 text-slate-300">{t('uptime.downtime')}: {formatSec(day.downtime_sec)}</div>
-      {day.unknown_sec > 0 && <div className="text-slate-300">{t('uptime.unknown')}: {formatSec(day.unknown_sec)}</div>}
+      <div className="mt-1 text-slate-300">
+        {t('uptime.downtime')}: {formatSec(day.downtime_sec)}
+      </div>
+      {day.unknown_sec > 0 && (
+        <div className="text-slate-300">
+          {t('uptime.unknown')}: {formatSec(day.unknown_sec)}
+        </div>
+      )}
       <div className="absolute left-1/2 -bottom-1 -translate-x-1/2 w-2 h-2 bg-slate-900 dark:bg-slate-700 rotate-45" />
     </div>
   );
@@ -175,17 +194,21 @@ export function UptimeBar30d({
     <>
       <div
         data-bar-chart
-        className={compact
-          ? 'flex h-5 items-end gap-[2px] overflow-hidden sm:h-6'
-          : 'flex h-6 items-end gap-[2px] overflow-hidden sm:h-8 sm:gap-[3px]'}
+        className={
+          compact
+            ? 'flex h-5 items-end gap-[2px] overflow-hidden sm:h-6'
+            : 'flex h-6 items-end gap-[2px] overflow-hidden sm:h-8 sm:gap-[3px]'
+        }
       >
         {emptyCount > 0 &&
           Array.from({ length: emptyCount }).map((_, idx) => (
             <div
               key={`empty-${idx}`}
-              className={compact
-                ? 'h-[100%] max-w-[6px] min-w-[3px] flex-1 rounded-sm bg-slate-200 dark:bg-slate-700'
-                : 'h-[100%] max-w-[6px] min-w-[3px] flex-1 rounded-sm bg-slate-200 dark:bg-slate-700 sm:max-w-[8px] sm:min-w-[4px]'}
+              className={
+                compact
+                  ? 'h-[100%] max-w-[6px] min-w-[3px] flex-1 rounded-sm bg-slate-200 dark:bg-slate-700'
+                  : 'h-[100%] max-w-[6px] min-w-[3px] flex-1 rounded-sm bg-slate-200 dark:bg-slate-700 sm:max-w-[8px] sm:min-w-[4px]'
+              }
             />
           ))}
 
@@ -197,9 +220,11 @@ export function UptimeBar30d({
               key={slotKey}
               type="button"
               aria-label={`${t('uptime.aria_prefix')} ${formatDay(d.day_start_at, timeZone, locale)}`}
-              className={`${compact
-                ? 'max-w-[6px] min-w-[3px] flex-1'
-                : 'max-w-[6px] min-w-[3px] flex-1 sm:max-w-[8px] sm:min-w-[4px]'} rounded-sm transition-all duration-150
+              className={`${
+                compact
+                  ? 'max-w-[6px] min-w-[3px] flex-1'
+                  : 'max-w-[6px] min-w-[3px] flex-1 sm:max-w-[8px] sm:min-w-[4px]'
+              } rounded-sm transition-all duration-150
                 ${getUptimeColorClasses(pct, ratingLevel)}
                 ${compact ? 'hover:scale-y-105' : 'hover:scale-y-110'} hover:shadow-md ${tooltip?.slotKey === slotKey ? getUptimeGlow(pct, ratingLevel) : ''}`}
               style={{ height: '100%' }}
@@ -214,15 +239,16 @@ export function UptimeBar30d({
         })}
       </div>
 
-      {tooltip && createPortal(
-        <Tooltip
-          day={tooltip.day}
-          position={tooltip.position}
-          ratingLevel={ratingLevel}
-          timeZone={timeZone}
-        />,
-        document.body,
-      )}
+      {tooltip &&
+        createPortal(
+          <Tooltip
+            day={tooltip.day}
+            position={tooltip.position}
+            ratingLevel={ratingLevel}
+            timeZone={timeZone}
+          />,
+          document.body,
+        )}
     </>
   );
 }

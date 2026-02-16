@@ -100,7 +100,10 @@ async function listMaintenanceSuppressedMonitorIds(
       AND mwm.monitor_id IN (${placeholders})
   `;
 
-  const { results } = await db.prepare(sql).bind(at, ...ids).all<{ monitor_id: number }>();
+  const { results } = await db
+    .prepare(sql)
+    .bind(at, ...ids)
+    .all<{ monitor_id: number }>();
   return new Set((results ?? []).map((r) => r.monitor_id));
 }
 
@@ -135,7 +138,10 @@ async function listMaintenanceWindowMonitorIdsByWindowId(
     ORDER BY maintenance_window_id, monitor_id
   `;
 
-  const { results } = await db.prepare(sql).bind(...windowIds).all<MaintenanceWindowMonitorLinkRow>();
+  const { results } = await db
+    .prepare(sql)
+    .bind(...windowIds)
+    .all<MaintenanceWindowMonitorLinkRow>();
   for (const r of results ?? []) {
     const existing = byWindow.get(r.maintenance_window_id) ?? [];
     existing.push(r.monitor_id);
@@ -201,7 +207,9 @@ function maintenanceWindowRowToPayload(row: MaintenanceWindowRow, monitorIds: nu
   };
 }
 
-function toHttpMethod(value: string | null): 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | null {
+function toHttpMethod(
+  value: string | null,
+): 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | null {
   const normalized = (value ?? 'GET').toUpperCase();
   switch (normalized) {
     case 'GET':
@@ -284,7 +292,12 @@ async function persistCheckAndState(
   monitorId: number,
   checkedAt: number,
   outcome: CheckOutcome,
-  next: { status: MonitorStatus; lastChangedAt: number; consecutiveFailures: number; consecutiveSuccesses: number },
+  next: {
+    status: MonitorStatus;
+    lastChangedAt: number;
+    consecutiveFailures: number;
+    consecutiveSuccesses: number;
+  },
   outageAction: 'open' | 'close' | 'update' | 'none',
   stateLastError: string | null,
 ): Promise<void> {
@@ -425,9 +438,13 @@ async function runDueMonitor(
         const httpHeaders = parseDbJsonNullable(httpHeadersJsonSchema, row.http_headers_json, {
           field: 'http_headers_json',
         });
-        const expectedStatus = parseDbJsonNullable(expectedStatusJsonSchema, row.expected_status_json, {
-          field: 'expected_status_json',
-        });
+        const expectedStatus = parseDbJsonNullable(
+          expectedStatusJsonSchema,
+          row.expected_status_json,
+          {
+            field: 'expected_status_json',
+          },
+        );
 
         outcome = await runHttpCheck({
           url: row.target,
@@ -543,7 +560,9 @@ export async function runScheduledTick(env: Env, ctx: ExecutionContext): Promise
 
   const channels = await listActiveWebhookChannels(env.DB);
   const notify: NotifyContext | null =
-    channels.length === 0 ? null : { ctx, envRecord: env as unknown as Record<string, unknown>, channels };
+    channels.length === 0
+      ? null
+      : { ctx, envRecord: env as unknown as Record<string, unknown>, channels };
 
   // Load global settings once per tick.
   const settings = await readSettings(env.DB);
@@ -644,7 +663,16 @@ export async function runScheduledTick(env: Env, ctx: ExecutionContext): Promise
   const limit = pLimit(CHECK_CONCURRENCY);
   const settled = await Promise.allSettled(
     due.map((m) =>
-      limit(() => runDueMonitor(env, m, checkedAt, notify, suppressedMonitorIds.has(m.id), stateMachineConfig)),
+      limit(() =>
+        runDueMonitor(
+          env,
+          m,
+          checkedAt,
+          notify,
+          suppressedMonitorIds.has(m.id),
+          stateMachineConfig,
+        ),
+      ),
     ),
   );
 

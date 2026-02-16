@@ -43,8 +43,14 @@ function normalizeThreshold(raw: number | undefined, fallback: number): number {
 
 function normalizeConfig(config?: Partial<StateMachineConfig>): StateMachineConfig {
   return {
-    failuresToDownFromUp: normalizeThreshold(config?.failuresToDownFromUp, DEFAULT_CONFIG.failuresToDownFromUp),
-    successesToUpFromDown: normalizeThreshold(config?.successesToUpFromDown, DEFAULT_CONFIG.successesToUpFromDown),
+    failuresToDownFromUp: normalizeThreshold(
+      config?.failuresToDownFromUp,
+      DEFAULT_CONFIG.failuresToDownFromUp,
+    ),
+    successesToUpFromDown: normalizeThreshold(
+      config?.successesToUpFromDown,
+      DEFAULT_CONFIG.successesToUpFromDown,
+    ),
   };
 }
 
@@ -122,7 +128,7 @@ export function computeNextState(
     nextStatus = prevStatus === 'unknown' ? 'unknown' : prevStatus;
   }
 
-  const lastChangedAt = changed ? checkedAt : prevChangedAt ?? checkedAt;
+  const lastChangedAt = changed ? checkedAt : (prevChangedAt ?? checkedAt);
 
   const outageAction: OutageAction =
     prevStatus !== 'down' && nextStatus === 'down'

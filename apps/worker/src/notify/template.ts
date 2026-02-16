@@ -2,9 +2,7 @@ import type { NotificationEventType } from '@uptimer/db';
 
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
-type PathToken =
-  | { type: 'prop'; key: string }
-  | { type: 'index'; index: number };
+type PathToken = { type: 'prop'; key: string } | { type: 'index'; index: number };
 
 function parsePath(path: string): PathToken[] | null {
   const trimmed = path.trim();

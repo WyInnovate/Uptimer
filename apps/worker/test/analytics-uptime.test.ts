@@ -57,7 +57,10 @@ describe('analytics/uptime', () => {
 
     expect(overlapSeconds(a, b)).toBe(50 + 10 + 100);
 
-    const sparse = [{ start: 0, end: 10 }, undefined] as unknown as Array<{ start: number; end: number }>;
+    const sparse = [{ start: 0, end: 10 }, undefined] as unknown as Array<{
+      start: number;
+      end: number;
+    }>;
     expect(overlapSeconds(sparse, [{ start: 0, end: 10 }])).toBe(10);
   });
 

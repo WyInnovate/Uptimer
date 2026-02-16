@@ -21,4 +21,3 @@ export const patchNotificationChannelInputSchema = z
   });
 
 export type PatchNotificationChannelInput = z.infer<typeof patchNotificationChannelInputSchema>;
-

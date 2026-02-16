@@ -24,6 +24,7 @@
 ```
 
 说明：
+
 - 本仓库采用 monorepo 结构，便于共享类型与统一依赖。
 - `UptimeFlare/` 仅作为 Cloudflare API/Workers 用法参考；本项目实现应以 `Application.md` 为准。
 
@@ -61,6 +62,7 @@ apps/worker/
 ```
 
 约定：
+
 - 所有对外 API 均从 `routes/` 进入；非路由逻辑沉到对应模块（monitor/scheduler/notify/db）。
 - `scheduled()` 入口仅负责编排流程与日志；探测实现与 DB 写入在模块内完成。
 
@@ -95,6 +97,7 @@ apps/web/
 ```
 
 约定：
+
 - 与后端共享的类型与 schema 优先从 `packages/shared` 导入，避免前后端“各写一套”。
 - API 请求统一走 `api/client.ts`；不要在组件内散落裸 `fetch`。
 
@@ -116,6 +119,7 @@ packages/db/
 ```
 
 约定：
+
 - DB schema（Drizzle）与 D1 migrations（SQL）必须同步变更；任何 schema 改动必须伴随新增 migration。
 - `config_json`、`*_json` 字段统一使用 Zod 做运行时校验。
 
@@ -132,4 +136,3 @@ packages/db/
   - DB/接口统一用 `up|down|maintenance|paused|unknown`；延迟统一用 `latency_ms`。
 - 不允许在 `apps/web` 直接依赖 Worker 运行时 API（如 `cloudflare:sockets`）。
 - 不允许修改 `UptimeFlare/` 作为实现的一部分（除非明确要求）。
-

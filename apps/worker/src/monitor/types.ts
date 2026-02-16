@@ -5,4 +5,3 @@ export type CheckOutcome = {
   httpStatus: number | null;
   attempts: number;
 };
-

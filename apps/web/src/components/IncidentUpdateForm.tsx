@@ -3,19 +3,22 @@ import type { CreateIncidentUpdateInput, IncidentStatus } from '../api/types';
 import { useI18n } from '../app/I18nContext';
 import { incidentStatusLabel } from '../i18n/labels';
 import { Markdown } from './Markdown';
-import {
-  Button,
-  FIELD_LABEL_CLASS,
-  SELECT_CLASS,
-  TEXTAREA_CLASS,
-} from './ui';
+import { Button, FIELD_LABEL_CLASS, SELECT_CLASS, TEXTAREA_CLASS } from './ui';
 
-const statusOptions: Array<Exclude<IncidentStatus, 'resolved'>> = ['investigating', 'identified', 'monitoring'];
+const statusOptions: Array<Exclude<IncidentStatus, 'resolved'>> = [
+  'investigating',
+  'identified',
+  'monitoring',
+];
 const selectClass = SELECT_CLASS;
 const textareaClass = TEXTAREA_CLASS;
 const labelClass = FIELD_LABEL_CLASS;
 
-export function IncidentUpdateForm({ onSubmit, onCancel, isLoading }: {
+export function IncidentUpdateForm({
+  onSubmit,
+  onCancel,
+  isLoading,
+}: {
   onSubmit: (input: CreateIncidentUpdateInput) => void;
   onCancel: () => void;
   isLoading?: boolean;
@@ -26,13 +29,20 @@ export function IncidentUpdateForm({ onSubmit, onCancel, isLoading }: {
   const normalized = useMemo(() => message.trim(), [message]);
 
   return (
-    <form className="space-y-5" onSubmit={(e) => {
-      e.preventDefault();
-      onSubmit(status === '' ? { message: normalized } : { message: normalized, status });
-    }}>
+    <form
+      className="space-y-5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit(status === '' ? { message: normalized } : { message: normalized, status });
+      }}
+    >
       <div>
         <label className={labelClass}>{t('incident_update.status')}</label>
-        <select value={status} onChange={(e) => setStatus(e.target.value as Exclude<IncidentStatus, 'resolved'> | '')} className={selectClass}>
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value as Exclude<IncidentStatus, 'resolved'> | '')}
+          className={selectClass}
+        >
           <option value="">{t('incident_update.status_placeholder')}</option>
           {statusOptions.map((it) => (
             <option key={it} value={it}>
@@ -57,7 +67,9 @@ export function IncidentUpdateForm({ onSubmit, onCancel, isLoading }: {
       {normalized && (
         <div>
           <div className={labelClass}>{t('common.preview')}</div>
-          <div className="border border-slate-200 dark:border-slate-600 rounded-lg p-4 bg-slate-50 dark:bg-slate-700/50"><Markdown text={normalized} /></div>
+          <div className="border border-slate-200 dark:border-slate-600 rounded-lg p-4 bg-slate-50 dark:bg-slate-700/50">
+            <Markdown text={normalized} />
+          </div>
         </div>
       )}
 

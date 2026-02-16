@@ -18,9 +18,16 @@ describe('validateHttpTarget', () => {
     expect(validateHttpTarget('https://10.0.1.2/health')).toBe('target hostname is not allowed');
     expect(validateHttpTarget('https://127.0.0.1/health')).toBe('target hostname is not allowed');
     expect(validateHttpTarget('https://[::1]/health')).toBe('target hostname is not allowed');
+    expect(validateHttpTarget('https://[::ffff:127.0.0.1]/health')).toBe(
+      'target hostname is not allowed',
+    );
     expect(validateHttpTarget('https://[fc00::1]/health')).toBe('target hostname is not allowed');
     expect(validateHttpTarget('https://192.0.2.10/health')).toBe('target hostname is not allowed');
+    expect(validateHttpTarget('https://198.51.100.1/health')).toBe(
+      'target hostname is not allowed',
+    );
     expect(validateHttpTarget('https://198.18.0.10/health')).toBe('target hostname is not allowed');
+    expect(validateHttpTarget('https://203.0.113.1/health')).toBe('target hostname is not allowed');
     expect(validateHttpTarget('https://224.1.1.1/health')).toBe('target hostname is not allowed');
     expect(validateHttpTarget('https://240.0.0.1/health')).toBe('target hostname is not allowed');
   });
@@ -42,6 +49,7 @@ describe('parseTcpTarget', () => {
   it('returns null for malformed targets', () => {
     expect(parseTcpTarget('')).toBeNull();
     expect(parseTcpTarget('missing-port')).toBeNull();
+    expect(parseTcpTarget('2606:4700:4700::1111:443')).toBeNull();
     expect(parseTcpTarget('[::1]')).toBeNull();
     expect(parseTcpTarget('[::1')).toBeNull();
     expect(parseTcpTarget('[::1]443')).toBeNull();
@@ -60,12 +68,19 @@ describe('validateTcpTarget', () => {
     expect(validateTcpTarget('localhost:5432')).toBe('target host is not allowed');
     expect(validateTcpTarget('192.168.1.2:5432')).toBe('target host is not allowed');
     expect(validateTcpTarget('127.0.0.1:80')).toBe('target host is not allowed');
+    expect(validateTcpTarget('127.1:80')).toBe('target host is not allowed');
+    expect(validateTcpTarget('0x7f000001:80')).toBe('target host is not allowed');
     expect(validateTcpTarget('[::1]:443')).toBe('target host is not allowed');
+    expect(validateTcpTarget('[::ffff:127.0.0.1]:443')).toBe('target host is not allowed');
   });
 
   it('rejects malformed payloads and out-of-range ports', () => {
-    expect(validateTcpTarget('bad-target')).toBe('target must be in host:port format (IPv6: [addr]:port)');
-    expect(validateTcpTarget('example.com:65536')).toBe('target must be in host:port format (IPv6: [addr]:port)');
+    expect(validateTcpTarget('bad-target')).toBe(
+      'target must be in host:port format (IPv6: [addr]:port)',
+    );
+    expect(validateTcpTarget('example.com:65536')).toBe(
+      'target must be in host:port format (IPv6: [addr]:port)',
+    );
     expect(validateTcpTarget('[]:443')).toBe('target host is required');
   });
 });

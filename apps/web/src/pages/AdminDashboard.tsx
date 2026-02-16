@@ -76,7 +76,6 @@ type ModalState =
   | { type: 'create-maintenance' }
   | { type: 'edit-maintenance'; window: MaintenanceWindow };
 
-
 type MonitorTestFeedback = {
   at: number;
   monitor: Awaited<ReturnType<typeof testMonitor>>['monitor'];
@@ -206,7 +205,9 @@ function normalizeGroupInput(value: string, ungroupedLabel: string): string | nu
     return null;
   }
   const aliases = [ungroupedLabel, ...UNGROUPED_LABEL_ALIASES];
-  if (aliases.some((alias) => trimmed.localeCompare(alias, undefined, { sensitivity: 'base' }) === 0)) {
+  if (
+    aliases.some((alias) => trimmed.localeCompare(alias, undefined, { sensitivity: 'base' }) === 0)
+  ) {
     return null;
   }
   return trimmed;
@@ -247,7 +248,7 @@ function compareMonitors(
           displayGroupLabel(monitorGroupLabel(b), ungroupedLabel),
           undefined,
           {
-          sensitivity: 'base',
+            sensitivity: 'base',
           },
         );
       }
@@ -300,10 +301,22 @@ export function AdminDashboard() {
   const [serverLocalePatchSupported, setServerLocalePatchSupported] = useState(true);
   const [localePatchFallbackActive, setLocalePatchFallbackActive] = useState(false);
 
-  const monitorsQuery = useQuery({ queryKey: ['admin-monitors'], queryFn: () => fetchAdminMonitors() });
-  const channelsQuery = useQuery({ queryKey: ['admin-channels'], queryFn: () => fetchNotificationChannels() });
-  const incidentsQuery = useQuery({ queryKey: ['admin-incidents'], queryFn: () => fetchAdminIncidents() });
-  const maintenanceQuery = useQuery({ queryKey: ['admin-maintenance-windows'], queryFn: () => fetchMaintenanceWindows() });
+  const monitorsQuery = useQuery({
+    queryKey: ['admin-monitors'],
+    queryFn: () => fetchAdminMonitors(),
+  });
+  const channelsQuery = useQuery({
+    queryKey: ['admin-channels'],
+    queryFn: () => fetchNotificationChannels(),
+  });
+  const incidentsQuery = useQuery({
+    queryKey: ['admin-incidents'],
+    queryFn: () => fetchAdminIncidents(),
+  });
+  const maintenanceQuery = useQuery({
+    queryKey: ['admin-maintenance-windows'],
+    queryFn: () => fetchMaintenanceWindows(),
+  });
 
   const settingsQuery = useQuery({
     queryKey: ['admin-settings'],
@@ -357,7 +370,9 @@ export function AdminDashboard() {
       await queryClient.cancelQueries({ queryKey: ['admin-settings'] });
       await queryClient.cancelQueries({ queryKey: ['status'] });
 
-      const prevSettings = queryClient.getQueryData<{ settings: AdminSettings }>(['admin-settings']);
+      const prevSettings = queryClient.getQueryData<{ settings: AdminSettings }>([
+        'admin-settings',
+      ]);
       const prevStatus = queryClient.getQueryData<StatusResponse>(['status']);
 
       if (prevSettings) {
@@ -379,7 +394,10 @@ export function AdminDashboard() {
           ...(nextRating
             ? {
                 uptime_rating_level: nextRating,
-                monitors: prevStatus.monitors.map((m) => ({ ...m, uptime_rating_level: nextRating })),
+                monitors: prevStatus.monitors.map((m) => ({
+                  ...m,
+                  uptime_rating_level: nextRating,
+                })),
               }
             : {}),
         });
@@ -399,7 +417,8 @@ export function AdminDashboard() {
         return;
       }
 
-      const prevSettings = (ctx as { prevSettings?: { settings: AdminSettings } } | undefined)?.prevSettings;
+      const prevSettings = (ctx as { prevSettings?: { settings: AdminSettings } } | undefined)
+        ?.prevSettings;
       const prevStatus = (ctx as { prevStatus?: StatusResponse } | undefined)?.prevStatus;
 
       if (prevSettings) queryClient.setQueryData(['admin-settings'], prevSettings);
@@ -443,7 +462,8 @@ export function AdminDashboard() {
     },
   });
   const updateMonitorMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof updateMonitor>[1] }) => updateMonitor(id, data),
+    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof updateMonitor>[1] }) =>
+      updateMonitor(id, data),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['admin-monitors'] });
       closeModal();
@@ -452,34 +472,47 @@ export function AdminDashboard() {
   const deleteMonitorMut = useMutation({
     mutationFn: deleteMonitor,
     onSuccess: (_data, id) => {
-      queryClient.setQueryData(['admin-monitors'], (old: { monitors: AdminMonitor[] } | undefined) => ({
-        monitors: (old?.monitors ?? []).filter((m) => m.id !== id),
-      }));
+      queryClient.setQueryData(
+        ['admin-monitors'],
+        (old: { monitors: AdminMonitor[] } | undefined) => ({
+          monitors: (old?.monitors ?? []).filter((m) => m.id !== id),
+        }),
+      );
     },
   });
 
   const pauseMonitorMut = useMutation({
     mutationFn: pauseMonitor,
     onSuccess: (data) => {
-      queryClient.setQueryData(['admin-monitors'], (old: { monitors: AdminMonitor[] } | undefined) => ({
-        monitors: (old?.monitors ?? []).map((m) => (m.id === data.monitor.id ? data.monitor : m)),
-      }));
+      queryClient.setQueryData(
+        ['admin-monitors'],
+        (old: { monitors: AdminMonitor[] } | undefined) => ({
+          monitors: (old?.monitors ?? []).map((m) => (m.id === data.monitor.id ? data.monitor : m)),
+        }),
+      );
     },
   });
 
   const resumeMonitorMut = useMutation({
     mutationFn: resumeMonitor,
     onSuccess: (data) => {
-      queryClient.setQueryData(['admin-monitors'], (old: { monitors: AdminMonitor[] } | undefined) => ({
-        monitors: (old?.monitors ?? []).map((m) => (m.id === data.monitor.id ? data.monitor : m)),
-      }));
+      queryClient.setQueryData(
+        ['admin-monitors'],
+        (old: { monitors: AdminMonitor[] } | undefined) => ({
+          monitors: (old?.monitors ?? []).map((m) => (m.id === data.monitor.id ? data.monitor : m)),
+        }),
+      );
     },
   });
 
   const testMonitorMut = useMutation({
     mutationFn: testMonitor,
     onSuccess: (data) => {
-      setMonitorTestFeedback({ at: Math.floor(Date.now() / 1000), monitor: data.monitor, result: data.result });
+      setMonitorTestFeedback({
+        at: Math.floor(Date.now() / 1000),
+        monitor: data.monitor,
+        result: data.result,
+      });
       setMonitorTestError(null);
     },
     onError: (err, monitorId) => {
@@ -496,21 +529,35 @@ export function AdminDashboard() {
   const createChannelMut = useMutation({
     mutationFn: createNotificationChannel,
     onSuccess: (data) => {
-      queryClient.setQueryData(['admin-channels'], (old: { notification_channels: NotificationChannel[] } | undefined) => ({
-        notification_channels: [...(old?.notification_channels ?? []), data.notification_channel].sort((a, b) => a.id - b.id),
-      }));
+      queryClient.setQueryData(
+        ['admin-channels'],
+        (old: { notification_channels: NotificationChannel[] } | undefined) => ({
+          notification_channels: [
+            ...(old?.notification_channels ?? []),
+            data.notification_channel,
+          ].sort((a, b) => a.id - b.id),
+        }),
+      );
       closeModal();
     },
   });
   const updateChannelMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof updateNotificationChannel>[1] }) =>
-      updateNotificationChannel(id, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: number;
+      data: Parameters<typeof updateNotificationChannel>[1];
+    }) => updateNotificationChannel(id, data),
     onSuccess: (data) => {
-      queryClient.setQueryData(['admin-channels'], (old: { notification_channels: NotificationChannel[] } | undefined) => ({
-        notification_channels: (old?.notification_channels ?? []).map((ch) =>
-          ch.id === data.notification_channel.id ? data.notification_channel : ch,
-        ),
-      }));
+      queryClient.setQueryData(
+        ['admin-channels'],
+        (old: { notification_channels: NotificationChannel[] } | undefined) => ({
+          notification_channels: (old?.notification_channels ?? []).map((ch) =>
+            ch.id === data.notification_channel.id ? data.notification_channel : ch,
+          ),
+        }),
+      );
       closeModal();
     },
   });
@@ -539,75 +586,110 @@ export function AdminDashboard() {
   const deleteChannelMut = useMutation({
     mutationFn: deleteNotificationChannel,
     onSuccess: (_data, id) => {
-      queryClient.setQueryData(['admin-channels'], (old: { notification_channels: NotificationChannel[] } | undefined) => ({
-        notification_channels: (old?.notification_channels ?? []).filter((ch) => ch.id !== id),
-      }));
+      queryClient.setQueryData(
+        ['admin-channels'],
+        (old: { notification_channels: NotificationChannel[] } | undefined) => ({
+          notification_channels: (old?.notification_channels ?? []).filter((ch) => ch.id !== id),
+        }),
+      );
     },
   });
 
   const createIncidentMut = useMutation({
     mutationFn: createIncident,
     onSuccess: (data) => {
-      queryClient.setQueryData(['admin-incidents'], (old: { incidents: Incident[] } | undefined) => ({
-        incidents: [data.incident, ...(old?.incidents ?? [])],
-      }));
+      queryClient.setQueryData(
+        ['admin-incidents'],
+        (old: { incidents: Incident[] } | undefined) => ({
+          incidents: [data.incident, ...(old?.incidents ?? [])],
+        }),
+      );
       closeModal();
     },
   });
   const addIncidentUpdateMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof addIncidentUpdate>[1] }) => addIncidentUpdate(id, data),
+    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof addIncidentUpdate>[1] }) =>
+      addIncidentUpdate(id, data),
     onSuccess: (data) => {
-      queryClient.setQueryData(['admin-incidents'], (old: { incidents: Incident[] } | undefined) => ({
-        incidents: (old?.incidents ?? []).map((it) => (it.id === data.incident.id ? data.incident : it)),
-      }));
+      queryClient.setQueryData(
+        ['admin-incidents'],
+        (old: { incidents: Incident[] } | undefined) => ({
+          incidents: (old?.incidents ?? []).map((it) =>
+            it.id === data.incident.id ? data.incident : it,
+          ),
+        }),
+      );
       closeModal();
     },
   });
   const resolveIncidentMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof resolveIncident>[1] }) => resolveIncident(id, data),
+    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof resolveIncident>[1] }) =>
+      resolveIncident(id, data),
     onSuccess: (data) => {
-      queryClient.setQueryData(['admin-incidents'], (old: { incidents: Incident[] } | undefined) => ({
-        incidents: (old?.incidents ?? []).map((it) => (it.id === data.incident.id ? data.incident : it)),
-      }));
+      queryClient.setQueryData(
+        ['admin-incidents'],
+        (old: { incidents: Incident[] } | undefined) => ({
+          incidents: (old?.incidents ?? []).map((it) =>
+            it.id === data.incident.id ? data.incident : it,
+          ),
+        }),
+      );
       closeModal();
     },
   });
   const deleteIncidentMut = useMutation({
     mutationFn: deleteIncident,
     onSuccess: (_data, id) => {
-      queryClient.setQueryData(['admin-incidents'], (old: { incidents: Incident[] } | undefined) => ({
-        incidents: (old?.incidents ?? []).filter((it) => it.id !== id),
-      }));
+      queryClient.setQueryData(
+        ['admin-incidents'],
+        (old: { incidents: Incident[] } | undefined) => ({
+          incidents: (old?.incidents ?? []).filter((it) => it.id !== id),
+        }),
+      );
     },
   });
 
   const createMaintenanceMut = useMutation({
     mutationFn: createMaintenanceWindow,
     onSuccess: (data) => {
-      queryClient.setQueryData(['admin-maintenance-windows'], (old: { maintenance_windows: MaintenanceWindow[] } | undefined) => ({
-        maintenance_windows: [data.maintenance_window, ...(old?.maintenance_windows ?? [])],
-      }));
+      queryClient.setQueryData(
+        ['admin-maintenance-windows'],
+        (old: { maintenance_windows: MaintenanceWindow[] } | undefined) => ({
+          maintenance_windows: [data.maintenance_window, ...(old?.maintenance_windows ?? [])],
+        }),
+      );
       closeModal();
     },
   });
   const updateMaintenanceMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof updateMaintenanceWindow>[1] }) =>
-      updateMaintenanceWindow(id, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: number;
+      data: Parameters<typeof updateMaintenanceWindow>[1];
+    }) => updateMaintenanceWindow(id, data),
     onSuccess: (data) => {
-      queryClient.setQueryData(['admin-maintenance-windows'], (old: { maintenance_windows: MaintenanceWindow[] } | undefined) => ({
-        maintenance_windows: (old?.maintenance_windows ?? []).map((w) =>
-          w.id === data.maintenance_window.id ? data.maintenance_window : w,
-        ),
-      }));
+      queryClient.setQueryData(
+        ['admin-maintenance-windows'],
+        (old: { maintenance_windows: MaintenanceWindow[] } | undefined) => ({
+          maintenance_windows: (old?.maintenance_windows ?? []).map((w) =>
+            w.id === data.maintenance_window.id ? data.maintenance_window : w,
+          ),
+        }),
+      );
       closeModal();
     },
   });
   const deleteMaintenanceMut = useMutation({
     mutationFn: deleteMaintenanceWindow,
     onSuccess: (_data, id) => {
-      queryClient.setQueryData(['admin-maintenance-windows'], (old: { maintenance_windows: MaintenanceWindow[] } | undefined) => ({
-        maintenance_windows: (old?.maintenance_windows ?? []).filter((w) => w.id !== id),
-      }));
+      queryClient.setQueryData(
+        ['admin-maintenance-windows'],
+        (old: { maintenance_windows: MaintenanceWindow[] } | undefined) => ({
+          maintenance_windows: (old?.maintenance_windows ?? []).filter((w) => w.id !== id),
+        }),
+      );
     },
   });
 
@@ -671,13 +753,7 @@ export function AdminDashboard() {
   }, [monitorGroupFilter, monitorGroupLabels]);
 
   const moveMonitorGroupMut = useMutation({
-    mutationFn: async ({
-      groupLabel,
-      direction,
-    }: {
-      groupLabel: string;
-      direction: -1 | 1;
-    }) => {
+    mutationFn: async ({ groupLabel, direction }: { groupLabel: string; direction: -1 | 1 }) => {
       const fromIndex = monitorGroupIndexByLabel.get(groupLabel);
       if (fromIndex === undefined) return;
 
@@ -727,7 +803,9 @@ export function AdminDashboard() {
       const parsedSortOrder =
         sortOrderTrimmed.length > 0 ? Number.parseInt(sortOrderTrimmed, 10) : undefined;
       const groupSortOrder =
-        parsedSortOrder !== undefined && Number.isFinite(parsedSortOrder) ? parsedSortOrder : undefined;
+        parsedSortOrder !== undefined && Number.isFinite(parsedSortOrder)
+          ? parsedSortOrder
+          : undefined;
 
       await assignMonitorsToGroup({
         monitor_ids: monitorIds,
@@ -808,7 +886,10 @@ export function AdminDashboard() {
   const someVisibleMonitorsSelected = visibleMonitorIds.some((id) => selectedMonitorIdSet.has(id));
 
   const channelNameById = useMemo(
-    () => new Map((channelsQuery.data?.notification_channels ?? []).map((ch) => [ch.id, ch.name] as const)),
+    () =>
+      new Map(
+        (channelsQuery.data?.notification_channels ?? []).map((ch) => [ch.id, ch.name] as const),
+      ),
     [channelsQuery.data?.notification_channels],
   );
   const toUiGroupLabel = (groupLabel: string) => displayGroupLabel(groupLabel, ungroupedLabel);
@@ -817,14 +898,24 @@ export function AdminDashboard() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <header className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700">
         <div className="mx-auto max-w-[92rem] px-4 py-3 sm:px-6 sm:py-4 lg:px-8 flex justify-between items-center">
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{t('admin_dashboard.title')}</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
+            {t('admin_dashboard.title')}
+          </h1>
           <div className="flex items-center gap-1">
             <ThemeToggle />
             <Link
               to={ADMIN_ANALYTICS_PATH}
-              className={cn(navActionClass, 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100')}
+              className={cn(
+                navActionClass,
+                'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100',
+              )}
             >
-              <svg className="w-5 h-5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg
+                className="w-5 h-5 sm:hidden"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -836,9 +927,17 @@ export function AdminDashboard() {
             </Link>
             <Link
               to="/"
-              className={cn(navActionClass, 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100')}
+              className={cn(
+                navActionClass,
+                'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100',
+              )}
             >
-              <svg className="w-5 h-5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg
+                className="w-5 h-5 sm:hidden"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -850,9 +949,17 @@ export function AdminDashboard() {
             </Link>
             <button
               onClick={logout}
-              className={cn(navActionClass, 'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300')}
+              className={cn(
+                navActionClass,
+                'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300',
+              )}
             >
-              <svg className="w-5 h-5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg
+                className="w-5 h-5 sm:hidden"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -881,8 +988,18 @@ export function AdminDashboard() {
                   : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200',
               )}
             >
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={tabItem.icon} />
+              <svg
+                className="w-4 h-4 flex-shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d={tabItem.icon}
+                />
               </svg>
               <span className="hidden sm:inline">{t(tabItem.labelKey)}</span>
             </button>
@@ -894,8 +1011,12 @@ export function AdminDashboard() {
         {tab === 'monitors' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{t('admin_dashboard.tab.monitors')}</h2>
-              <Button onClick={() => setModal({ type: 'create-monitor' })}>{t('admin_dashboard.create_monitor')}</Button>
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+                {t('admin_dashboard.tab.monitors')}
+              </h2>
+              <Button onClick={() => setModal({ type: 'create-monitor' })}>
+                {t('admin_dashboard.create_monitor')}
+              </Button>
             </div>
             {testingMonitorId !== null && (
               <Card className="p-3 border-blue-200 bg-blue-50/70 dark:bg-blue-500/10 dark:border-blue-400/30">
@@ -911,7 +1032,9 @@ export function AdminDashboard() {
               <Card className="p-3 border-slate-200 dark:border-slate-600">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                    {t('admin_dashboard.monitor_test_last', { name: monitorTestFeedback.monitor.name })}
+                    {t('admin_dashboard.monitor_test_last', {
+                      name: monitorTestFeedback.monitor.name,
+                    })}
                   </div>
                   <Badge
                     variant={
@@ -931,7 +1054,11 @@ export function AdminDashboard() {
                   {formatDateTime(monitorTestFeedback.at, settings?.site_timezone)}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
-                  <span>{t('admin_dashboard.monitor_test_attempts', { value: monitorTestFeedback.result.attempts })}</span>
+                  <span>
+                    {t('admin_dashboard.monitor_test_attempts', {
+                      value: monitorTestFeedback.result.attempts,
+                    })}
+                  </span>
                   <span>
                     {t('admin_dashboard.monitor_test_http', {
                       value:
@@ -965,20 +1092,26 @@ export function AdminDashboard() {
               <Card className="p-3 border-red-200 bg-red-50/70 dark:bg-red-500/10 dark:border-red-400/30">
                 <div className="text-sm font-medium text-red-700 dark:text-red-300">
                   {t('admin_dashboard.monitor_test_failed', {
-                    name: monitorNameById.get(monitorTestError.monitorId) ?? `#${monitorTestError.monitorId}`,
+                    name:
+                      monitorNameById.get(monitorTestError.monitorId) ??
+                      `#${monitorTestError.monitorId}`,
                   })}
                 </div>
                 <div className="mt-1 text-xs text-red-600 dark:text-red-400">
                   {formatDateTime(monitorTestError.at, settings?.site_timezone)}
                 </div>
-                <div className="mt-1 text-sm text-red-700 dark:text-red-300">{monitorTestError.message}</div>
+                <div className="mt-1 text-sm text-red-700 dark:text-red-300">
+                  {monitorTestError.message}
+                </div>
               </Card>
             )}
 
             {monitorsQuery.isLoading ? (
               <div className="text-slate-500 dark:text-slate-400">{t('common.loading')}</div>
             ) : !monitorsQuery.data?.monitors.length ? (
-              <Card className="p-6 sm:p-8 text-center text-slate-500 dark:text-slate-400">{t('admin_dashboard.no_monitors_yet')}</Card>
+              <Card className="p-6 sm:p-8 text-center text-slate-500 dark:text-slate-400">
+                {t('admin_dashboard.no_monitors_yet')}
+              </Card>
             ) : (
               <div className="grid gap-4 lg:grid-cols-[18rem,minmax(0,1fr)] 2xl:grid-cols-[21rem,minmax(0,1fr)]">
                 <div className="order-2 space-y-4 self-start lg:order-1 lg:sticky lg:top-6">
@@ -988,7 +1121,9 @@ export function AdminDashboard() {
                         {t('admin_dashboard.group_manager_title')}
                       </h3>
                       <span className="text-xs text-slate-500 dark:text-slate-400">
-                        {t('admin_dashboard.group_manager_count', { count: orderedMonitorGroups.length })}
+                        {t('admin_dashboard.group_manager_count', {
+                          count: orderedMonitorGroups.length,
+                        })}
                       </span>
                     </div>
                     <div className="mt-3 space-y-2 lg:max-h-[42vh] lg:overflow-y-auto lg:pr-1">
@@ -1034,7 +1169,12 @@ export function AdminDashboard() {
                               <button
                                 type="button"
                                 title={t('admin_dashboard.group_move_up')}
-                                onClick={() => moveMonitorGroupMut.mutate({ groupLabel: group.label, direction: -1 })}
+                                onClick={() =>
+                                  moveMonitorGroupMut.mutate({
+                                    groupLabel: group.label,
+                                    direction: -1,
+                                  })
+                                }
                                 disabled={isFirst || moveMonitorGroupMut.isPending}
                                 className="rounded border border-slate-300 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
                               >
@@ -1043,7 +1183,12 @@ export function AdminDashboard() {
                               <button
                                 type="button"
                                 title={t('admin_dashboard.group_move_down')}
-                                onClick={() => moveMonitorGroupMut.mutate({ groupLabel: group.label, direction: 1 })}
+                                onClick={() =>
+                                  moveMonitorGroupMut.mutate({
+                                    groupLabel: group.label,
+                                    direction: 1,
+                                  })
+                                }
                                 disabled={isLast || moveMonitorGroupMut.isPending}
                                 className="rounded border border-slate-300 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
                               >
@@ -1064,7 +1209,9 @@ export function AdminDashboard() {
                       {t('admin_dashboard.bulk_assign_title')}
                     </h3>
                     <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                      {t('admin_dashboard.bulk_assign_selected', { count: selectedMonitorIds.length })}
+                      {t('admin_dashboard.bulk_assign_selected', {
+                        count: selectedMonitorIds.length,
+                      })}
                     </div>
                     <div className="mt-3 space-y-3">
                       <div>
@@ -1091,18 +1238,24 @@ export function AdminDashboard() {
                           min={-100000}
                           max={100000}
                           className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-700 focus:border-slate-400 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-                          placeholder={t('admin_dashboard.bulk_assign_target_group_order_placeholder')}
+                          placeholder={t(
+                            'admin_dashboard.bulk_assign_target_group_order_placeholder',
+                          )}
                         />
                       </div>
                       <Button
                         type="button"
-                        disabled={selectedMonitorIds.length === 0 || assignSelectedMonitorsMut.isPending}
+                        disabled={
+                          selectedMonitorIds.length === 0 || assignSelectedMonitorsMut.isPending
+                        }
                         onClick={() => assignSelectedMonitorsMut.mutate()}
                         className="w-full"
                       >
                         {assignSelectedMonitorsMut.isPending
                           ? t('admin_dashboard.bulk_assign_apply_pending')
-                          : t('admin_dashboard.bulk_assign_apply', { count: selectedMonitorIds.length })}
+                          : t('admin_dashboard.bulk_assign_apply', {
+                              count: selectedMonitorIds.length,
+                            })}
                       </Button>
                       {selectedMonitorIds.length > 0 && (
                         <button
@@ -1121,12 +1274,16 @@ export function AdminDashboard() {
 
                   {monitorGroupReorderError && (
                     <Card className="p-3 border-red-200 bg-red-50/70 dark:bg-red-500/10 dark:border-red-400/30">
-                      <div className="text-sm text-red-700 dark:text-red-300">{monitorGroupReorderError}</div>
+                      <div className="text-sm text-red-700 dark:text-red-300">
+                        {monitorGroupReorderError}
+                      </div>
                     </Card>
                   )}
                   {monitorGroupManageError && (
                     <Card className="p-3 border-red-200 bg-red-50/70 dark:bg-red-500/10 dark:border-red-400/30">
-                      <div className="text-sm text-red-700 dark:text-red-300">{monitorGroupManageError}</div>
+                      <div className="text-sm text-red-700 dark:text-red-300">
+                        {monitorGroupManageError}
+                      </div>
                     </Card>
                   )}
 
@@ -1148,11 +1305,17 @@ export function AdminDashboard() {
                           <span className="mb-1 block">{t('common.group')}</span>
                           <select
                             value={monitorGroupMode}
-                            onChange={(e) => setMonitorGroupMode(e.target.value as MonitorGroupMode)}
+                            onChange={(e) =>
+                              setMonitorGroupMode(e.target.value as MonitorGroupMode)
+                            }
                             className="ui-select mt-1 block w-full"
                           >
-                            <option value="grouped">{t('admin_dashboard.monitor_group_mode_grouped')}</option>
-                            <option value="flat">{t('admin_dashboard.monitor_group_mode_flat')}</option>
+                            <option value="grouped">
+                              {t('admin_dashboard.monitor_group_mode_grouped')}
+                            </option>
+                            <option value="flat">
+                              {t('admin_dashboard.monitor_group_mode_flat')}
+                            </option>
                           </select>
                         </label>
                         <label className="text-xs text-slate-500 dark:text-slate-400">
@@ -1162,18 +1325,26 @@ export function AdminDashboard() {
                             onChange={(e) => setMonitorSortMode(e.target.value as MonitorSortMode)}
                             className="ui-select mt-1 block w-full"
                           >
-                            <option value="configured">{t('admin_dashboard.monitor_sort_mode_configured')}</option>
+                            <option value="configured">
+                              {t('admin_dashboard.monitor_sort_mode_configured')}
+                            </option>
                             <option value="status">{t('common.state')}</option>
                             <option value="name">{t('common.name')}</option>
-                            <option value="last_checked_at">{t('admin_dashboard.monitor_sort_mode_last_check')}</option>
-                            <option value="created_at">{t('admin_dashboard.monitor_sort_mode_created_time')}</option>
+                            <option value="last_checked_at">
+                              {t('admin_dashboard.monitor_sort_mode_last_check')}
+                            </option>
+                            <option value="created_at">
+                              {t('admin_dashboard.monitor_sort_mode_created_time')}
+                            </option>
                           </select>
                         </label>
                         <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2 xl:col-span-1">
                           <span className="mb-1 block">{t('common.direction')}</span>
                           <select
                             value={monitorSortDirection}
-                            onChange={(e) => setMonitorSortDirection(e.target.value as MonitorSortDirection)}
+                            onChange={(e) =>
+                              setMonitorSortDirection(e.target.value as MonitorSortDirection)
+                            }
                             className="ui-select mt-1 block w-full"
                           >
                             <option value="asc">{t('common.asc')}</option>
@@ -1219,7 +1390,9 @@ export function AdminDashboard() {
                                   type="checkbox"
                                   checked={allVisibleMonitorsSelected}
                                   ref={(el) => {
-                                    if (el) el.indeterminate = !allVisibleMonitorsSelected && someVisibleMonitorsSelected;
+                                    if (el)
+                                      el.indeterminate =
+                                        !allVisibleMonitorsSelected && someVisibleMonitorsSelected;
                                   }}
                                   onChange={() => {
                                     if (allVisibleMonitorsSelected) {
@@ -1238,24 +1411,47 @@ export function AdminDashboard() {
                                   className="h-4 w-4 rounded border-slate-300 text-slate-700 focus:ring-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                                 />
                               </th>
-                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.name')}</th>
-                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.group')}</th>
-                              <th className="hidden px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide lg:table-cell">{t('admin_dashboard.monitor_table_group_order')}</th>
-                              <th className="hidden px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide lg:table-cell">{t('admin_dashboard.monitor_table_monitor_order')}</th>
-                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.type')}</th>
-                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.target')}</th>
-                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.state')}</th>
-                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('admin_dashboard.monitor_table_last_check')}</th>
-                              <th className="hidden px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide xl:table-cell">{t('admin_dashboard.monitor_table_last_error')}</th>
-                              <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.actions')}</th>
+                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                                {t('common.name')}
+                              </th>
+                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                                {t('common.group')}
+                              </th>
+                              <th className="hidden px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide lg:table-cell">
+                                {t('admin_dashboard.monitor_table_group_order')}
+                              </th>
+                              <th className="hidden px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide lg:table-cell">
+                                {t('admin_dashboard.monitor_table_monitor_order')}
+                              </th>
+                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                                {t('common.type')}
+                              </th>
+                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                                {t('common.target')}
+                              </th>
+                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                                {t('common.state')}
+                              </th>
+                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                                {t('admin_dashboard.monitor_table_last_check')}
+                              </th>
+                              <th className="hidden px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide xl:table-cell">
+                                {t('admin_dashboard.monitor_table_last_error')}
+                              </th>
+                              <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                                {t('common.actions')}
+                              </th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                             {filteredMonitors.map((m, index) => {
                               const groupLabel = monitorGroupLabel(m);
                               const prevMonitor = index > 0 ? filteredMonitors[index - 1] : null;
-                              const prevGroupLabel = prevMonitor ? monitorGroupLabel(prevMonitor) : null;
-                              const showGroupHeader = monitorGroupMode === 'grouped' && groupLabel !== prevGroupLabel;
+                              const prevGroupLabel = prevMonitor
+                                ? monitorGroupLabel(prevMonitor)
+                                : null;
+                              const showGroupHeader =
+                                monitorGroupMode === 'grouped' && groupLabel !== prevGroupLabel;
                               const groupMeta = monitorGroupMetaByLabel.get(groupLabel);
 
                               return (
@@ -1281,22 +1477,35 @@ export function AdminDashboard() {
                                         checked={selectedMonitorIdSet.has(m.id)}
                                         onChange={() => {
                                           setSelectedMonitorIds((prev) => {
-                                            if (prev.includes(m.id)) return prev.filter((id) => id !== m.id);
+                                            if (prev.includes(m.id))
+                                              return prev.filter((id) => id !== m.id);
                                             return [...prev, m.id];
                                           });
                                         }}
-                                        aria-label={t('admin_dashboard.monitor_select_row', { name: m.name })}
+                                        aria-label={t('admin_dashboard.monitor_select_row', {
+                                          name: m.name,
+                                        })}
                                         className="h-4 w-4 rounded border-slate-300 text-slate-700 focus:ring-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                                       />
                                     </td>
-                                    <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">{m.name}</td>
-                                    <td className="px-3 sm:px-4 py-3 text-xs text-slate-600 dark:text-slate-300">{toUiGroupLabel(groupLabel)}</td>
-                                    <td className="hidden px-3 sm:px-4 py-3 text-xs text-slate-500 dark:text-slate-400 tabular-nums lg:table-cell">{m.group_sort_order}</td>
-                                    <td className="hidden px-3 sm:px-4 py-3 text-xs text-slate-500 dark:text-slate-400 tabular-nums lg:table-cell">{m.sort_order}</td>
+                                    <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">
+                                      {m.name}
+                                    </td>
+                                    <td className="px-3 sm:px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
+                                      {toUiGroupLabel(groupLabel)}
+                                    </td>
+                                    <td className="hidden px-3 sm:px-4 py-3 text-xs text-slate-500 dark:text-slate-400 tabular-nums lg:table-cell">
+                                      {m.group_sort_order}
+                                    </td>
+                                    <td className="hidden px-3 sm:px-4 py-3 text-xs text-slate-500 dark:text-slate-400 tabular-nums lg:table-cell">
+                                      {m.sort_order}
+                                    </td>
                                     <td className="px-3 sm:px-4 py-3">
                                       <Badge variant="info">{m.type}</Badge>
                                     </td>
-                                    <td className="max-w-[160px] truncate px-3 py-3 text-sm text-slate-500 dark:text-slate-400 sm:max-w-[220px] sm:px-4">{m.target}</td>
+                                    <td className="max-w-[160px] truncate px-3 py-3 text-sm text-slate-500 dark:text-slate-400 sm:max-w-[220px] sm:px-4">
+                                      {m.target}
+                                    </td>
                                     <td className="px-3 sm:px-4 py-3">
                                       <div className="flex items-center gap-2">
                                         <Badge
@@ -1314,21 +1523,31 @@ export function AdminDashboard() {
                                         >
                                           {statusLabel(m.status, t)}
                                         </Badge>
-                                        {!m.is_active && <Badge variant="unknown">{t('common.inactive')}</Badge>}
+                                        {!m.is_active && (
+                                          <Badge variant="unknown">{t('common.inactive')}</Badge>
+                                        )}
                                       </div>
                                     </td>
                                     <td className="px-3 sm:px-4 py-3 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
                                       {m.last_checked_at ? (
                                         <>
-                                          {formatDateTime(m.last_checked_at, settings?.site_timezone)}
-                                          {m.last_latency_ms !== null ? ` (${m.last_latency_ms}ms)` : ''}
+                                          {formatDateTime(
+                                            m.last_checked_at,
+                                            settings?.site_timezone,
+                                          )}
+                                          {m.last_latency_ms !== null
+                                            ? ` (${m.last_latency_ms}ms)`
+                                            : ''}
                                         </>
                                       ) : (
                                         '-'
                                       )}
                                     </td>
                                     <td className="hidden max-w-[260px] px-3 sm:px-4 py-3 text-xs text-slate-500 dark:text-slate-400 xl:table-cell">
-                                      <span className="block truncate" title={m.last_error ?? undefined}>
+                                      <span
+                                        className="block truncate"
+                                        title={m.last_error ?? undefined}
+                                      >
                                         {m.last_error ? m.last_error : '-'}
                                       </span>
                                     </td>
@@ -1342,9 +1561,14 @@ export function AdminDashboard() {
                                             testMonitorMut.mutate(m.id);
                                           }}
                                           disabled={testMonitorMut.isPending}
-                                          className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-blue-600 hover:bg-blue-50 hover:text-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-300 disabled:opacity-50')}
+                                          className={cn(
+                                            TABLE_ACTION_BUTTON_CLASS,
+                                            'text-blue-600 hover:bg-blue-50 hover:text-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-300 disabled:opacity-50',
+                                          )}
                                         >
-                                          {testingMonitorId === m.id ? t('common.testing') : t('common.test')}
+                                          {testingMonitorId === m.id
+                                            ? t('common.testing')
+                                            : t('common.test')}
                                         </button>
                                         <button
                                           onClick={() => {
@@ -1359,9 +1583,14 @@ export function AdminDashboard() {
                                             resumeMonitorMut.isPending ||
                                             testingMonitorId === m.id
                                           }
-                                          className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-amber-700 hover:bg-amber-50 hover:text-amber-900 dark:text-amber-300 dark:hover:bg-amber-900/20 dark:hover:text-amber-200 disabled:opacity-50')}
+                                          className={cn(
+                                            TABLE_ACTION_BUTTON_CLASS,
+                                            'text-amber-700 hover:bg-amber-50 hover:text-amber-900 dark:text-amber-300 dark:hover:bg-amber-900/20 dark:hover:text-amber-200 disabled:opacity-50',
+                                          )}
                                         >
-                                          {m.status === 'paused' ? t('common.resume') : t('common.pause')}
+                                          {m.status === 'paused'
+                                            ? t('common.resume')
+                                            : t('common.pause')}
                                         </button>
                                         <button
                                           onClick={() => {
@@ -1369,13 +1598,22 @@ export function AdminDashboard() {
                                             updateMonitorMut.reset();
                                             setModal({ type: 'edit-monitor', monitor: m });
                                           }}
-                                          className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200')}
+                                          className={cn(
+                                            TABLE_ACTION_BUTTON_CLASS,
+                                            'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200',
+                                          )}
                                         >
                                           {t('common.edit')}
                                         </button>
                                         <button
-                                          onClick={() => confirm(`${t('common.delete')}?`) && deleteMonitorMut.mutate(m.id)}
-                                          className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300')}
+                                          onClick={() =>
+                                            confirm(`${t('common.delete')}?`) &&
+                                            deleteMonitorMut.mutate(m.id)
+                                          }
+                                          className={cn(
+                                            TABLE_ACTION_BUTTON_CLASS,
+                                            'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300',
+                                          )}
                                         >
                                           {t('common.delete')}
                                         </button>
@@ -1399,8 +1637,12 @@ export function AdminDashboard() {
         {tab === 'notifications' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{t('admin_dashboard.notification_channels_title')}</h2>
-              <Button onClick={() => setModal({ type: 'create-channel' })}>{t('admin_dashboard.create_channel')}</Button>
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+                {t('admin_dashboard.notification_channels_title')}
+              </h2>
+              <Button onClick={() => setModal({ type: 'create-channel' })}>
+                {t('admin_dashboard.create_channel')}
+              </Button>
             </div>
             {testingChannelId !== null && (
               <Card className="p-3 border-blue-200 bg-blue-50/70 dark:bg-blue-500/10 dark:border-blue-400/30">
@@ -1417,7 +1659,9 @@ export function AdminDashboard() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
                     {t('admin_dashboard.webhook_test_last', {
-                      name: channelNameById.get(channelTestFeedback.channelId) ?? `#${channelTestFeedback.channelId}`,
+                      name:
+                        channelNameById.get(channelTestFeedback.channelId) ??
+                        `#${channelTestFeedback.channelId}`,
                     })}
                   </div>
                   <Badge
@@ -1440,9 +1684,15 @@ export function AdminDashboard() {
                   {formatDateTime(channelTestFeedback.at, settings?.site_timezone)}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
-                  <span>{t('admin_dashboard.webhook_test_http', { value: channelTestFeedback.delivery?.http_status ?? '-' })}</span>
+                  <span>
+                    {t('admin_dashboard.webhook_test_http', {
+                      value: channelTestFeedback.delivery?.http_status ?? '-',
+                    })}
+                  </span>
                   <span className="max-w-full truncate" title={channelTestFeedback.eventKey}>
-                    {t('admin_dashboard.webhook_test_event_key', { value: channelTestFeedback.eventKey })}
+                    {t('admin_dashboard.webhook_test_event_key', {
+                      value: channelTestFeedback.eventKey,
+                    })}
                   </span>
                 </div>
                 <div
@@ -1465,40 +1715,61 @@ export function AdminDashboard() {
               <Card className="p-3 border-red-200 bg-red-50/70 dark:bg-red-500/10 dark:border-red-400/30">
                 <div className="text-sm font-medium text-red-700 dark:text-red-300">
                   {t('admin_dashboard.webhook_test_failed', {
-                    name: channelNameById.get(channelTestError.channelId) ?? `#${channelTestError.channelId}`,
+                    name:
+                      channelNameById.get(channelTestError.channelId) ??
+                      `#${channelTestError.channelId}`,
                   })}
                 </div>
                 <div className="mt-1 text-xs text-red-600 dark:text-red-400">
                   {formatDateTime(channelTestError.at, settings?.site_timezone)}
                 </div>
-                <div className="mt-1 text-sm text-red-700 dark:text-red-300">{channelTestError.message}</div>
+                <div className="mt-1 text-sm text-red-700 dark:text-red-300">
+                  {channelTestError.message}
+                </div>
               </Card>
             )}
 
             {channelsQuery.isLoading ? (
               <div className="text-slate-500 dark:text-slate-400">{t('common.loading')}</div>
             ) : !channelsQuery.data?.notification_channels.length ? (
-              <Card className="p-6 sm:p-8 text-center text-slate-500 dark:text-slate-400">{t('admin_dashboard.no_channels_yet')}</Card>
+              <Card className="p-6 sm:p-8 text-center text-slate-500 dark:text-slate-400">
+                {t('admin_dashboard.no_channels_yet')}
+              </Card>
             ) : (
               <Card className="overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[500px]">
                     <thead className="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
                       <tr>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.name')}</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.type')}</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.url')}</th>
-                        <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.actions')}</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.name')}
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.type')}
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.url')}
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.actions')}
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                       {channelsQuery.data.notification_channels.map((ch) => (
-                        <tr key={ch.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                          <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">{ch.name}</td>
+                        <tr
+                          key={ch.id}
+                          className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                        >
+                          <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">
+                            {ch.name}
+                          </td>
                           <td className="px-3 sm:px-4 py-3">
                             <Badge variant="info">{ch.type}</Badge>
                           </td>
-                          <td className="px-3 sm:px-4 py-3 text-sm text-slate-500 dark:text-slate-400 truncate max-w-[200px]">{ch.config_json.url}</td>
+                          <td className="px-3 sm:px-4 py-3 text-sm text-slate-500 dark:text-slate-400 truncate max-w-[200px]">
+                            {ch.config_json.url}
+                          </td>
                           <td className="px-3 sm:px-4 py-3 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-1 sm:gap-0">
                               <button
@@ -1509,19 +1780,33 @@ export function AdminDashboard() {
                                   testChannelMut.mutate(ch.id);
                                 }}
                                 disabled={testChannelMut.isPending}
-                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-blue-600 hover:bg-blue-50 hover:text-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-300 disabled:opacity-50')}
+                                className={cn(
+                                  TABLE_ACTION_BUTTON_CLASS,
+                                  'text-blue-600 hover:bg-blue-50 hover:text-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-300 disabled:opacity-50',
+                                )}
                               >
-                                {testingChannelId === ch.id ? t('common.testing') : t('common.test')}
+                                {testingChannelId === ch.id
+                                  ? t('common.testing')
+                                  : t('common.test')}
                               </button>
                               <button
                                 onClick={() => setModal({ type: 'edit-channel', channel: ch })}
-                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200')}
+                                className={cn(
+                                  TABLE_ACTION_BUTTON_CLASS,
+                                  'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200',
+                                )}
                               >
                                 {t('common.edit')}
                               </button>
                               <button
-                                onClick={() => confirm(`${t('common.delete')} "${ch.name}"?`) && deleteChannelMut.mutate(ch.id)}
-                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300')}
+                                onClick={() =>
+                                  confirm(`${t('common.delete')} "${ch.name}"?`) &&
+                                  deleteChannelMut.mutate(ch.id)
+                                }
+                                className={cn(
+                                  TABLE_ACTION_BUTTON_CLASS,
+                                  'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300',
+                                )}
                               >
                                 {t('common.delete')}
                               </button>
@@ -1540,13 +1825,17 @@ export function AdminDashboard() {
         {tab === 'settings' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{t('admin_dashboard.tab.settings')}</h2>
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+                {t('admin_dashboard.tab.settings')}
+              </h2>
             </div>
 
             <Card className="p-4 sm:p-5">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{t('admin_settings.uptime_rating.title')}</div>
+                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    {t('admin_settings.uptime_rating.title')}
+                  </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     {t('admin_settings.uptime_rating.help')}
                   </div>
@@ -1558,7 +1847,9 @@ export function AdminDashboard() {
                     const next = Number(e.target.value) as 1 | 2 | 3 | 4 | 5;
                     const cur = settingsDraft?.uptime_rating_level ?? 3;
                     if (next === cur) return;
-                    setSettingsDraft((prev) => (prev ? { ...prev, uptime_rating_level: next } : prev));
+                    setSettingsDraft((prev) =>
+                      prev ? { ...prev, uptime_rating_level: next } : prev,
+                    );
                     patchSettingsMut.mutate({ uptime_rating_level: next });
                   }}
                   disabled={settingsQuery.isLoading || !settingsDraft}
@@ -1573,12 +1864,15 @@ export function AdminDashboard() {
               </div>
 
               {settingsQuery.isError && (
-                <div className="mt-3 text-sm text-red-600 dark:text-red-400">{t('admin_dashboard.failed_load_settings')}</div>
+                <div className="mt-3 text-sm text-red-600 dark:text-red-400">
+                  {t('admin_dashboard.failed_load_settings')}
+                </div>
               )}
 
               {patchSettingsMut.isError && !localePatchFallbackActive && (
                 <div className="mt-3 text-sm text-red-600 dark:text-red-400">
-                  {formatError(patchSettingsMut.error) ?? t('admin_dashboard.failed_update_settings')}
+                  {formatError(patchSettingsMut.error) ??
+                    t('admin_dashboard.failed_update_settings')}
                 </div>
               )}
             </Card>
@@ -1586,7 +1880,9 @@ export function AdminDashboard() {
             <Card className="p-4 sm:p-5">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{t('admin_settings.locale.title')}</div>
+                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    {t('admin_settings.locale.title')}
+                  </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     {t('admin_settings.locale.help')}
                   </div>
@@ -1612,14 +1908,18 @@ export function AdminDashboard() {
                 </select>
               </div>
               {localePatchFallbackActive && (
-                <div className="mt-3 text-xs text-amber-700 dark:text-amber-300">{t('admin_settings.locale.local_only')}</div>
+                <div className="mt-3 text-xs text-amber-700 dark:text-amber-300">
+                  {t('admin_settings.locale.local_only')}
+                </div>
               )}
             </Card>
 
             <Card className="p-4 sm:p-5">
               <div className="space-y-4">
                 <div>
-                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{t('admin_settings.branding.title')}</div>
+                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    {t('admin_settings.branding.title')}
+                  </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     {t('admin_settings.branding.help')}
                   </div>
@@ -1662,13 +1962,17 @@ export function AdminDashboard() {
                       aria-label={t('admin_settings.branding.timezone')}
                       onChange={(e) => {
                         const next = e.target.value.slice(0, 64);
-                        setSettingsDraft((prev) => (prev ? { ...prev, site_timezone: next } : prev));
+                        setSettingsDraft((prev) =>
+                          prev ? { ...prev, site_timezone: next } : prev,
+                        );
                       }}
                       onFocus={() => setFocusedSetting('site_timezone')}
                       onBlur={(e) => {
                         setFocusedSetting(null);
                         const next = e.currentTarget.value.trim().slice(0, 64) || 'UTC';
-                        setSettingsDraft((prev) => (prev ? { ...prev, site_timezone: next } : prev));
+                        setSettingsDraft((prev) =>
+                          prev ? { ...prev, site_timezone: next } : prev,
+                        );
                         patchSettingsMut.mutate({ site_timezone: next });
                       }}
                       onKeyDown={(e) => {
@@ -1679,7 +1983,9 @@ export function AdminDashboard() {
                       placeholder="UTC"
                       className="w-full border dark:border-slate-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 disabled:opacity-50"
                     />
-                    <div className="text-xs text-slate-400 dark:text-slate-500 mt-1">{t('admin_settings.branding.timezone_help')}</div>
+                    <div className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                      {t('admin_settings.branding.timezone_help')}
+                    </div>
                   </div>
                 </div>
 
@@ -1692,13 +1998,17 @@ export function AdminDashboard() {
                     aria-label={t('admin_settings.branding.site_description')}
                     onChange={(e) => {
                       const next = e.target.value.slice(0, 500);
-                      setSettingsDraft((prev) => (prev ? { ...prev, site_description: next } : prev));
+                      setSettingsDraft((prev) =>
+                        prev ? { ...prev, site_description: next } : prev,
+                      );
                     }}
                     onFocus={() => setFocusedSetting('site_description')}
                     onBlur={(e) => {
                       setFocusedSetting(null);
                       const next = sanitizeSiteDescription(e.currentTarget.value);
-                      setSettingsDraft((prev) => (prev ? { ...prev, site_description: next } : prev));
+                      setSettingsDraft((prev) =>
+                        prev ? { ...prev, site_description: next } : prev,
+                      );
                       patchSettingsMut.mutate({ site_description: next });
                     }}
                     disabled={settingsQuery.isLoading || !settingsDraft}
@@ -1712,7 +2022,9 @@ export function AdminDashboard() {
             <Card className="p-4 sm:p-5">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{t('admin_settings.retention.title')}</div>
+                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    {t('admin_settings.retention.title')}
+                  </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     {t('admin_settings.retention.help')}
                   </div>
@@ -1727,13 +2039,17 @@ export function AdminDashboard() {
                   onChange={(e) => {
                     const raw = Number(e.target.value);
                     const next = Number.isFinite(raw) ? Math.trunc(raw) : 1;
-                    setSettingsDraft((prev) => (prev ? { ...prev, retention_check_results_days: next } : prev));
+                    setSettingsDraft((prev) =>
+                      prev ? { ...prev, retention_check_results_days: next } : prev,
+                    );
                   }}
                   onFocus={() => setFocusedSetting('retention_check_results_days')}
                   onBlur={(e) => {
                     setFocusedSetting(null);
                     const next = clampInt(Number(e.currentTarget.value), 1, 365);
-                    setSettingsDraft((prev) => (prev ? { ...prev, retention_check_results_days: next } : prev));
+                    setSettingsDraft((prev) =>
+                      prev ? { ...prev, retention_check_results_days: next } : prev,
+                    );
                     patchSettingsMut.mutate({ retention_check_results_days: next });
                   }}
                   onKeyDown={(e) => {
@@ -1749,7 +2065,9 @@ export function AdminDashboard() {
             <Card className="p-4 sm:p-5">
               <div className="space-y-4">
                 <div>
-                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{t('admin_settings.state_machine.title')}</div>
+                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    {t('admin_settings.state_machine.title')}
+                  </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     {t('admin_settings.state_machine.help')}
                   </div>
@@ -1768,13 +2086,17 @@ export function AdminDashboard() {
                       onChange={(e) => {
                         const raw = Number(e.target.value);
                         const next = Number.isFinite(raw) ? Math.trunc(raw) : 1;
-                        setSettingsDraft((prev) => (prev ? { ...prev, state_failures_to_down_from_up: next } : prev));
+                        setSettingsDraft((prev) =>
+                          prev ? { ...prev, state_failures_to_down_from_up: next } : prev,
+                        );
                       }}
                       onFocus={() => setFocusedSetting('state_failures_to_down_from_up')}
                       onBlur={(e) => {
                         setFocusedSetting(null);
                         const next = clampInt(Number(e.currentTarget.value), 1, 10);
-                        setSettingsDraft((prev) => (prev ? { ...prev, state_failures_to_down_from_up: next } : prev));
+                        setSettingsDraft((prev) =>
+                          prev ? { ...prev, state_failures_to_down_from_up: next } : prev,
+                        );
                         patchSettingsMut.mutate({ state_failures_to_down_from_up: next });
                       }}
                       onKeyDown={(e) => {
@@ -1797,13 +2119,17 @@ export function AdminDashboard() {
                       onChange={(e) => {
                         const raw = Number(e.target.value);
                         const next = Number.isFinite(raw) ? Math.trunc(raw) : 1;
-                        setSettingsDraft((prev) => (prev ? { ...prev, state_successes_to_up_from_down: next } : prev));
+                        setSettingsDraft((prev) =>
+                          prev ? { ...prev, state_successes_to_up_from_down: next } : prev,
+                        );
                       }}
                       onFocus={() => setFocusedSetting('state_successes_to_up_from_down')}
                       onBlur={(e) => {
                         setFocusedSetting(null);
                         const next = clampInt(Number(e.currentTarget.value), 1, 10);
-                        setSettingsDraft((prev) => (prev ? { ...prev, state_successes_to_up_from_down: next } : prev));
+                        setSettingsDraft((prev) =>
+                          prev ? { ...prev, state_successes_to_up_from_down: next } : prev,
+                        );
                         patchSettingsMut.mutate({ state_successes_to_up_from_down: next });
                       }}
                       onKeyDown={(e) => {
@@ -1821,7 +2147,9 @@ export function AdminDashboard() {
             <Card className="p-4 sm:p-5">
               <div className="space-y-4">
                 <div>
-                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{t('admin_settings.defaults.title')}</div>
+                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    {t('admin_settings.defaults.title')}
+                  </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     {t('admin_settings.defaults.help')}
                   </div>
@@ -1836,7 +2164,9 @@ export function AdminDashboard() {
                       value={settingsDraft?.admin_default_overview_range ?? '24h'}
                       onChange={(e) => {
                         const next = e.target.value as '24h' | '7d';
-                        setSettingsDraft((prev) => (prev ? { ...prev, admin_default_overview_range: next } : prev));
+                        setSettingsDraft((prev) =>
+                          prev ? { ...prev, admin_default_overview_range: next } : prev,
+                        );
                         patchSettingsMut.mutate({ admin_default_overview_range: next });
                       }}
                       disabled={settingsQuery.isLoading || !settingsDraft}
@@ -1855,7 +2185,9 @@ export function AdminDashboard() {
                       value={settingsDraft?.admin_default_monitor_range ?? '24h'}
                       onChange={(e) => {
                         const next = e.target.value as AdminSettings['admin_default_monitor_range'];
-                        setSettingsDraft((prev) => (prev ? { ...prev, admin_default_monitor_range: next } : prev));
+                        setSettingsDraft((prev) =>
+                          prev ? { ...prev, admin_default_monitor_range: next } : prev,
+                        );
                         patchSettingsMut.mutate({ admin_default_monitor_range: next });
                       }}
                       disabled={settingsQuery.isLoading || !settingsDraft}
@@ -1876,62 +2208,109 @@ export function AdminDashboard() {
         {tab === 'incidents' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{t('admin_dashboard.tab.incidents')}</h2>
-              <Button onClick={() => setModal({ type: 'create-incident' })}>{t('admin_dashboard.create_incident')}</Button>
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+                {t('admin_dashboard.tab.incidents')}
+              </h2>
+              <Button onClick={() => setModal({ type: 'create-incident' })}>
+                {t('admin_dashboard.create_incident')}
+              </Button>
             </div>
             {incidentsQuery.isLoading ? (
               <div className="text-slate-500 dark:text-slate-400">{t('common.loading')}</div>
             ) : !incidentsQuery.data?.incidents.length ? (
-              <Card className="p-6 sm:p-8 text-center text-slate-500 dark:text-slate-400">{t('admin_dashboard.no_incidents_yet')}</Card>
+              <Card className="p-6 sm:p-8 text-center text-slate-500 dark:text-slate-400">
+                {t('admin_dashboard.no_incidents_yet')}
+              </Card>
             ) : (
               <Card className="overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[650px]">
                     <thead className="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
                       <tr>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.title_label')}</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.monitors')}</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.state')}</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.impact')}</th>
-                        <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.actions')}</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.title_label')}
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.monitors')}
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.state')}
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.impact')}
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.actions')}
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                       {incidentsQuery.data.incidents.map((it) => (
-                        <tr key={it.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                          <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">{it.title}</td>
+                        <tr
+                          key={it.id}
+                          className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                        >
+                          <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">
+                            {it.title}
+                          </td>
                           <td className="px-3 sm:px-4 py-3 text-sm text-slate-500 dark:text-slate-400 truncate max-w-[150px]">
-                            {it.monitor_ids.map((id) => monitorNameById.get(id) ?? `#${id}`).join(', ')}
+                            {it.monitor_ids
+                              .map((id) => monitorNameById.get(id) ?? `#${id}`)
+                              .join(', ')}
                           </td>
                           <td className="px-3 sm:px-4 py-3">
                             <Badge variant={it.status === 'resolved' ? 'up' : 'paused'}>
-                              {it.status === 'resolved' ? t('incident_status.resolved') : incidentStatusLabel(it.status, t)}
+                              {it.status === 'resolved'
+                                ? t('incident_status.resolved')
+                                : incidentStatusLabel(it.status, t)}
                             </Badge>
                           </td>
                           <td className="px-3 sm:px-4 py-3">
-                            <Badge variant={it.impact === 'critical' ? 'down' : it.impact === 'major' ? 'down' : 'paused'}>
+                            <Badge
+                              variant={
+                                it.impact === 'critical'
+                                  ? 'down'
+                                  : it.impact === 'major'
+                                    ? 'down'
+                                    : 'paused'
+                              }
+                            >
                               {incidentImpactLabel(it.impact, t)}
                             </Badge>
                           </td>
                           <td className="px-3 sm:px-4 py-3 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-1 sm:gap-0">
                               <button
-                                onClick={() => setModal({ type: 'add-incident-update', incident: it })}
+                                onClick={() =>
+                                  setModal({ type: 'add-incident-update', incident: it })
+                                }
                                 disabled={it.status === 'resolved'}
-                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-blue-600 hover:bg-blue-50 hover:text-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-300 disabled:opacity-50')}
+                                className={cn(
+                                  TABLE_ACTION_BUTTON_CLASS,
+                                  'text-blue-600 hover:bg-blue-50 hover:text-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-300 disabled:opacity-50',
+                                )}
                               >
                                 {t('common.update')}
                               </button>
                               <button
                                 onClick={() => setModal({ type: 'resolve-incident', incident: it })}
                                 disabled={it.status === 'resolved'}
-                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-300 disabled:opacity-50')}
+                                className={cn(
+                                  TABLE_ACTION_BUTTON_CLASS,
+                                  'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-300 disabled:opacity-50',
+                                )}
                               >
                                 {t('resolve_incident.resolve')}
                               </button>
                               <button
-                                onClick={() => confirm(`${t('common.delete')} "${it.title}"?`) && deleteIncidentMut.mutate(it.id)}
-                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300')}
+                                onClick={() =>
+                                  confirm(`${t('common.delete')} "${it.title}"?`) &&
+                                  deleteIncidentMut.mutate(it.id)
+                                }
+                                className={cn(
+                                  TABLE_ACTION_BUTTON_CLASS,
+                                  'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300',
+                                )}
                               >
                                 {t('common.delete')}
                               </button>
@@ -1950,24 +2329,40 @@ export function AdminDashboard() {
         {tab === 'maintenance' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{t('admin_dashboard.maintenance_windows_title')}</h2>
-              <Button onClick={() => setModal({ type: 'create-maintenance' })}>{t('admin_dashboard.create_maintenance')}</Button>
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+                {t('admin_dashboard.maintenance_windows_title')}
+              </h2>
+              <Button onClick={() => setModal({ type: 'create-maintenance' })}>
+                {t('admin_dashboard.create_maintenance')}
+              </Button>
             </div>
             {maintenanceQuery.isLoading ? (
               <div className="text-slate-500 dark:text-slate-400">{t('common.loading')}</div>
             ) : !maintenanceQuery.data?.maintenance_windows.length ? (
-              <Card className="p-6 sm:p-8 text-center text-slate-500 dark:text-slate-400">{t('admin_dashboard.no_maintenance_yet')}</Card>
+              <Card className="p-6 sm:p-8 text-center text-slate-500 dark:text-slate-400">
+                {t('admin_dashboard.no_maintenance_yet')}
+              </Card>
             ) : (
               <Card className="overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[650px]">
                     <thead className="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
                       <tr>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.title_label')}</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.monitors')}</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.schedule')}</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.state')}</th>
-                        <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('common.actions')}</th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.title_label')}
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.monitors')}
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.schedule')}
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.state')}
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.actions')}
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -1980,10 +2375,22 @@ export function AdminDashboard() {
                               ? t('common.upcoming')
                               : t('common.ended');
                         return (
-                          <tr key={w.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                            <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">{w.title}</td>
-                            <td className="px-3 sm:px-4 py-3 text-sm text-slate-500 dark:text-slate-400 truncate max-w-[120px]">{w.monitor_ids.map((id) => monitorNameById.get(id) ?? `#${id}`).join(', ')}</td>
-                            <td className="px-3 sm:px-4 py-3 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">{formatDateTime(w.starts_at, settings?.site_timezone)} – {formatDateTime(w.ends_at, settings?.site_timezone)}</td>
+                          <tr
+                            key={w.id}
+                            className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                          >
+                            <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">
+                              {w.title}
+                            </td>
+                            <td className="px-3 sm:px-4 py-3 text-sm text-slate-500 dark:text-slate-400 truncate max-w-[120px]">
+                              {w.monitor_ids
+                                .map((id) => monitorNameById.get(id) ?? `#${id}`)
+                                .join(', ')}
+                            </td>
+                            <td className="px-3 sm:px-4 py-3 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                              {formatDateTime(w.starts_at, settings?.site_timezone)} –{' '}
+                              {formatDateTime(w.ends_at, settings?.site_timezone)}
+                            </td>
                             <td className="px-3 sm:px-4 py-3">
                               <Badge
                                 variant={
@@ -2001,13 +2408,22 @@ export function AdminDashboard() {
                               <div className="flex items-center justify-end gap-1 sm:gap-0">
                                 <button
                                   onClick={() => setModal({ type: 'edit-maintenance', window: w })}
-                                  className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200')}
+                                  className={cn(
+                                    TABLE_ACTION_BUTTON_CLASS,
+                                    'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200',
+                                  )}
                                 >
                                   {t('common.edit')}
                                 </button>
                                 <button
-                                  onClick={() => confirm(`${t('common.delete')} "${w.title}"?`) && deleteMaintenanceMut.mutate(w.id)}
-                                  className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300')}
+                                  onClick={() =>
+                                    confirm(`${t('common.delete')} "${w.title}"?`) &&
+                                    deleteMaintenanceMut.mutate(w.id)
+                                  }
+                                  className={cn(
+                                    TABLE_ACTION_BUTTON_CLASS,
+                                    'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300',
+                                  )}
                                 >
                                   {t('common.delete')}
                                 </button>
@@ -2082,7 +2498,10 @@ export function AdminDashboard() {
             )}
             {modal.type === 'create-incident' && (
               <IncidentForm
-                monitors={(monitorsQuery.data?.monitors ?? []).map((m) => ({ id: m.id, name: m.name }))}
+                monitors={(monitorsQuery.data?.monitors ?? []).map((m) => ({
+                  id: m.id,
+                  name: m.name,
+                }))}
                 onSubmit={(data) => createIncidentMut.mutate(data)}
                 onCancel={closeModal}
                 isLoading={createIncidentMut.isPending}
@@ -2104,7 +2523,10 @@ export function AdminDashboard() {
             )}
             {modal.type === 'create-maintenance' && (
               <MaintenanceWindowForm
-                monitors={(monitorsQuery.data?.monitors ?? []).map((m) => ({ id: m.id, name: m.name }))}
+                monitors={(monitorsQuery.data?.monitors ?? []).map((m) => ({
+                  id: m.id,
+                  name: m.name,
+                }))}
                 onSubmit={(data) => createMaintenanceMut.mutate(data)}
                 onCancel={closeModal}
                 isLoading={createMaintenanceMut.isPending}
@@ -2112,7 +2534,10 @@ export function AdminDashboard() {
             )}
             {modal.type === 'edit-maintenance' && (
               <MaintenanceWindowForm
-                monitors={(monitorsQuery.data?.monitors ?? []).map((m) => ({ id: m.id, name: m.name }))}
+                monitors={(monitorsQuery.data?.monitors ?? []).map((m) => ({
+                  id: m.id,
+                  name: m.name,
+                }))}
                 window={modal.window}
                 onSubmit={(data) => updateMaintenanceMut.mutate({ id: modal.window.id, data })}
                 onCancel={closeModal}

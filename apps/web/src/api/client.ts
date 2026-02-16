@@ -387,7 +387,7 @@ export async function deleteNotificationChannel(id: number): Promise<{ deleted: 
 export async function fetchPublicIncidents(
   limit = 20,
   cursor?: number,
-  opts: { resolvedOnly?: boolean } = {}
+  opts: { resolvedOnly?: boolean } = {},
 ): Promise<PublicIncidentsResponse> {
   const qs = new URLSearchParams({ limit: String(limit) });
   if (opts.resolvedOnly) qs.set('resolved_only', '1');
@@ -399,7 +399,7 @@ export async function fetchPublicIncidents(
 // Public API - Maintenance windows
 export async function fetchPublicMaintenanceWindows(
   limit = 20,
-  cursor?: number
+  cursor?: number,
 ): Promise<PublicMaintenanceWindowsResponse> {
   const qs = new URLSearchParams({ limit: String(limit) });
   if (cursor) qs.set('cursor', String(cursor));
@@ -410,7 +410,7 @@ export async function fetchPublicMaintenanceWindows(
 // Public API - Per-day context (maintenance + incidents for a monitor)
 export async function fetchPublicDayContext(
   monitorId: number,
-  dayStartAt: number
+  dayStartAt: number,
 ): Promise<PublicDayContextResponse> {
   const qs = new URLSearchParams({ day_start_at: String(dayStartAt) });
   const res = await fetch(`${API_BASE}/public/monitors/${monitorId}/day-context?${qs.toString()}`);
@@ -467,7 +467,9 @@ export async function deleteIncident(id: number): Promise<{ deleted: boolean }> 
 }
 
 // Admin API - Maintenance Windows
-export async function fetchMaintenanceWindows(limit = 50): Promise<{ maintenance_windows: MaintenanceWindow[] }> {
+export async function fetchMaintenanceWindows(
+  limit = 50,
+): Promise<{ maintenance_windows: MaintenanceWindow[] }> {
   const res = await fetch(`${API_BASE}/admin/maintenance-windows?limit=${limit}`, {
     headers: getAuthHeaders(),
   });
@@ -534,9 +536,12 @@ export async function fetchAdminMonitorOutages(
   qs.set('limit', String(opts.limit ?? 50));
   if (opts.cursor !== undefined) qs.set('cursor', String(opts.cursor));
 
-  const res = await fetch(`${API_BASE}/admin/analytics/monitors/${monitorId}/outages?${qs.toString()}`, {
-    headers: getAuthHeaders(),
-  });
+  const res = await fetch(
+    `${API_BASE}/admin/analytics/monitors/${monitorId}/outages?${qs.toString()}`,
+    {
+      headers: getAuthHeaders(),
+    },
+  );
   return handleResponse<MonitorOutagesResponse>(res);
 }
 
@@ -558,7 +563,9 @@ export async function patchAdminSettings(
   return handleResponse<AdminSettingsResponse>(res);
 }
 
-export async function fetchAdminUptimeRating(): Promise<{ uptime_rating_level: 1 | 2 | 3 | 4 | 5 }> {
+export async function fetchAdminUptimeRating(): Promise<{
+  uptime_rating_level: 1 | 2 | 3 | 4 | 5;
+}> {
   const res = await fetch(`${API_BASE}/admin/settings/uptime-rating`, {
     headers: getAuthHeaders(),
   });

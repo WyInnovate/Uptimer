@@ -5,10 +5,7 @@ import type { MiddlewareHandler } from 'hono';
 //
 // IMPORTANT: If a handler already set Cache-Control, we respect it (do not override).
 // This allows endpoints like `/public/status` to precisely control freshness (<= 60s).
-export function cachePublic(opts: {
-  cacheName: string;
-  maxAgeSeconds: number;
-}): MiddlewareHandler {
+export function cachePublic(opts: { cacheName: string; maxAgeSeconds: number }): MiddlewareHandler {
   return async (c, next) => {
     if (c.req.method !== 'GET') {
       await next();

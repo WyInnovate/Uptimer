@@ -20,7 +20,12 @@ export class AppError extends Error {
   }
 }
 
-function jsonError(c: Context, status: ContentfulStatusCode, code: string, message: string): Response {
+function jsonError(
+  c: Context,
+  status: ContentfulStatusCode,
+  code: string,
+  message: string,
+): Response {
   return c.json({ error: { code, message } } satisfies ErrorResponse, status);
 }
 

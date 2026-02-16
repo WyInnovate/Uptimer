@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: ['**']
   pull_request:
 
 jobs:
@@ -14,12 +14,12 @@ jobs:
       # actions/setup-node with `cache: pnpm` expects pnpm to be on PATH.
       - uses: pnpm/action-setup@v4
         with:
-          version: "10.8.1"
+          version: '10.8.1'
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: ".node-version"
-          cache: "pnpm"
+          node-version-file: '.node-version'
+          cache: 'pnpm'
 
       - name: Install
         run: pnpm install --frozen-lockfile

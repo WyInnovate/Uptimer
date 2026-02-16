@@ -101,7 +101,7 @@ export function buildUnknownIntervals(
   rangeStart: number,
   rangeEnd: number,
   intervalSec: number,
-  checks: Array<{ checked_at: number; status: string }>
+  checks: Array<{ checked_at: number; status: string }>,
 ): Interval[] {
   if (rangeEnd <= rangeStart) return [];
   if (!Number.isFinite(intervalSec) || intervalSec <= 0) {
@@ -162,4 +162,3 @@ export function buildUnknownIntervals(
   processSegment(cursor, rangeEnd);
   return unknown;
 }
-
