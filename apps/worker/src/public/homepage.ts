@@ -5,16 +5,14 @@ import {
   computeTodayPartialUptimeBatch,
   listIncidentMonitorIdsByIncidentId,
   listMaintenanceWindowMonitorIdsByWindowId,
+  listVisibleActiveIncidents,
+  listVisibleMaintenanceWindows,
   readPublicSiteSettings,
-  STATUS_ACTIVE_INCIDENT_LIMIT,
-  STATUS_ACTIVE_MAINTENANCE_LIMIT,
-  STATUS_UPCOMING_MAINTENANCE_LIMIT,
   toIncidentImpact,
   toIncidentStatus,
   toMonitorStatus,
+  toUptimePct,
   utcDayStart,
-  type FilteredIncidentEntry,
-  type FilteredMaintenanceWindowEntry,
   type IncidentRow,
   type MaintenanceWindowRow,
   type UptimeWindowTotals,
@@ -24,6 +22,7 @@ import {
   chunkPositiveIntegerIds,
   filterStatusPageScopedMonitorIds,
   incidentStatusPageVisibilityPredicate,
+  listStatusPageVisibleMonitorIds,
   maintenanceWindowStatusPageVisibilityPredicate,
   monitorVisibilityPredicate,
   shouldIncludeStatusPageScopedItem,
@@ -79,13 +78,6 @@ function toHeartbeatStatusCode(status: string | null | undefined): string {
   }
 }
 
-function toUptimePctMilli(totalSec: number, uptimeSec: number): number | null {
-  if (!Number.isFinite(totalSec) || totalSec <= 0) return null;
-  if (!Number.isFinite(uptimeSec)) return null;
-
-  return Math.max(0, Math.min(100_000, Math.round((uptimeSec / totalSec) * 100_000)));
-}
-
 function toIncidentSummary(row: IncidentRow): IncidentSummary {
   return {
     id: row.id,
@@ -110,6 +102,20 @@ function toMaintenancePreview(
     ends_at: row.ends_at,
     monitor_ids: monitorIds,
   };
+}
+
+async function readHomepageUptimeRatingLevel(db: D1Database): Promise<1 | 2 | 3 | 4 | 5> {
+  const row = await db
+    .prepare('SELECT value FROM settings WHERE key = ?1')
+    .bind('uptime_rating_level')
+    .first<{ value: string }>();
+
+  const raw = row?.value ?? '';
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 5) {
+    return parsed as 1 | 2 | 3 | 4 | 5;
+  }
+  return 3;
 }
 
 async function listHomepageMaintenanceMonitorIds(
@@ -195,13 +201,13 @@ function addUptimeDay(
   monitor: HomepageMonitorCard,
   totals: { totalSec: number; uptimeSec: number },
   dayStartAt: number,
-  uptime: Pick<UptimeWindowTotals, 'total_sec' | 'downtime_sec' | 'unknown_sec' | 'uptime_sec'>,
+  uptime: UptimeWindowTotals,
 ): void {
   monitor.uptime_day_strip.day_start_at.push(dayStartAt);
   monitor.uptime_day_strip.downtime_sec.push(uptime.downtime_sec);
   monitor.uptime_day_strip.unknown_sec.push(uptime.unknown_sec);
   monitor.uptime_day_strip.uptime_pct_milli.push(
-    toUptimePctMilli(uptime.total_sec, uptime.uptime_sec),
+    uptime.uptime_pct === null ? null : Math.round(uptime.uptime_pct * 1000),
   );
   totals.totalSec += uptime.total_sec;
   totals.uptimeSec += uptime.uptime_sec;
@@ -215,7 +221,7 @@ async function buildHomepageMonitorData(
   monitors: HomepageMonitorCard[];
   summary: PublicHomepageResponse['summary'];
   overallStatus: HomepageMonitorStatus;
-  visibleMonitorIds: Set<number>;
+  uptimeRatingLevel: 1 | 2 | 3 | 4 | 5;
 }> {
   const rangeEndFullDays = utcDayStart(now);
   const rangeEnd = now;
@@ -259,7 +265,10 @@ async function buildHomepageMonitorData(
     ? Math.max(rangeEnd - UPTIME_DAYS * 86400, earliestCreatedAt)
     : rangeEnd - UPTIME_DAYS * 86400;
 
-  const maintenanceMonitorIds = await listHomepageMaintenanceMonitorIds(db, now, ids);
+  const [maintenanceMonitorIds, uptimeRatingLevel] = await Promise.all([
+    listHomepageMaintenanceMonitorIds(db, now, ids),
+    readHomepageUptimeRatingLevel(db),
+  ]);
 
   const summary: PublicHomepageResponse['summary'] = {
     up: 0,
@@ -283,7 +292,7 @@ async function buildHomepageMonitorData(
       monitors,
       summary,
       overallStatus: computeOverallStatus(summary),
-      visibleMonitorIds: new Set<number>(),
+      uptimeRatingLevel,
     };
   }
 
@@ -403,7 +412,7 @@ async function buildHomepageMonitorData(
     monitors,
     summary,
     overallStatus: computeOverallStatus(summary),
-    visibleMonitorIds: new Set<number>(ids),
+    uptimeRatingLevel,
   };
 }
 
