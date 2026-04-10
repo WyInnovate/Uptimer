@@ -16,29 +16,56 @@ vi.mock('../src/notify/webhook', () => ({
   dispatchWebhookToChannels: vi.fn(),
 }));
 vi.mock('../src/public/homepage', () => ({
+  advancePublicHomepageStateCoverageInPlace: vi.fn(),
+  buildPublicHomepagePayloadFromState: vi.fn(),
+  buildPublicHomepageState: vi.fn(),
   computePublicHomepageArtifactPayload: vi.fn(),
-  computePublicHomepagePayload: vi.fn(),
+  parsePublicHomepageState: vi.fn(),
 }));
 vi.mock('../src/snapshots', () => ({
+  readHomepageArtifactSnapshotGeneratedAt: vi.fn(),
+  readHomepageStateSnapshotJson: vi.fn(),
   refreshPublicHomepageArtifactSnapshotIfNeeded: vi.fn(),
-  refreshPublicHomepageSnapshotIfNeeded: vi.fn(),
   wasHomepageRecentlyAccessed: vi.fn(),
+  writeHomepageStateAndArtifactJson: vi.fn(),
 }));
 
 import type { Env } from '../src/env';
 import { runHttpCheck } from '../src/monitor/http';
 import { runTcpCheck } from '../src/monitor/tcp';
 import { dispatchWebhookToChannels } from '../src/notify/webhook';
-import { computePublicHomepageArtifactPayload, computePublicHomepagePayload } from '../src/public/homepage';
+import {
+  advancePublicHomepageStateCoverageInPlace,
+  buildPublicHomepagePayloadFromState,
+  buildPublicHomepageState,
+  computePublicHomepageArtifactPayload,
+} from '../src/public/homepage';
 import { runScheduledTick } from '../src/scheduler/scheduled';
 import { acquireLease } from '../src/scheduler/lock';
 import {
+  readHomepageArtifactSnapshotGeneratedAt,
+  readHomepageStateSnapshotJson,
   refreshPublicHomepageArtifactSnapshotIfNeeded,
-  refreshPublicHomepageSnapshotIfNeeded,
   wasHomepageRecentlyAccessed,
+  writeHomepageStateAndArtifactJson,
 } from '../src/snapshots';
 import { readSettings } from '../src/settings';
 import { createFakeD1Database, type FakeD1QueryHandler } from './helpers/fake-d1';
+
+const EMPTY_PUBLIC_CACHE_JSON = JSON.stringify({
+  heartbeat: {
+    checked_at: [],
+    status_codes: '',
+    latency_ms: [],
+  },
+  uptime_days: {
+    day_start_at: [],
+    total_sec: [],
+    downtime_sec: [],
+    unknown_sec: [],
+    uptime_sec: [],
+  },
+});
 
 type CreateEnvOptions = {
   dueRows?: unknown[];
@@ -61,6 +88,18 @@ function createEnv(options: CreateEnvOptions = {}): Env {
     onRun,
   } = options;
 
+  const normalizedDueRows = dueRows.map((row) =>
+    Object.defineProperties(
+      {
+        show_on_status_page: 1,
+        created_at: 1_700_000_000 - 40 * 86_400,
+        last_checked_at: 1_700_000_000,
+        public_cache_json: EMPTY_PUBLIC_CACHE_JSON,
+      },
+      Object.getOwnPropertyDescriptors(row as Record<string, unknown>),
+    ),
+  );
+
   const handlers: FakeD1QueryHandler[] = [
     {
       match: 'from notification_channels',
@@ -68,7 +107,7 @@ function createEnv(options: CreateEnvOptions = {}): Env {
     },
     {
       match: 'from monitors m',
-      all: () => dueRows,
+      all: () => normalizedDueRows,
     },
     {
       match: 'select distinct mwm.monitor_id',
@@ -85,6 +124,10 @@ function createEnv(options: CreateEnvOptions = {}): Env {
         }
         return [];
       },
+    },
+    {
+      match: 'from incidents',
+      all: () => [],
     },
     {
       match: 'from maintenance_window_monitors',
@@ -144,15 +187,21 @@ describe('scheduler/scheduled regression', () => {
       uptime_rating_level: 3,
     });
     vi.mocked(dispatchWebhookToChannels).mockResolvedValue(undefined);
+    vi.mocked(advancePublicHomepageStateCoverageInPlace).mockImplementation(() => {});
+    vi.mocked(buildPublicHomepagePayloadFromState).mockReturnValue({
+      generated_at: Math.floor(Date.now() / 1000),
+    } as never);
+    vi.mocked(buildPublicHomepageState).mockResolvedValue({
+      generated_at: Math.floor(Date.now() / 1000),
+    } as never);
     vi.mocked(computePublicHomepageArtifactPayload).mockResolvedValue({
       generated_at: Math.floor(Date.now() / 1000),
     } as never);
-    vi.mocked(computePublicHomepagePayload).mockResolvedValue({
-      generated_at: Math.floor(Date.now() / 1000),
-    } as never);
+    vi.mocked(readHomepageArtifactSnapshotGeneratedAt).mockResolvedValue(null);
+    vi.mocked(readHomepageStateSnapshotJson).mockResolvedValue(null);
     vi.mocked(refreshPublicHomepageArtifactSnapshotIfNeeded).mockResolvedValue(false);
-    vi.mocked(refreshPublicHomepageSnapshotIfNeeded).mockResolvedValue(false);
     vi.mocked(wasHomepageRecentlyAccessed).mockResolvedValue(false);
+    vi.mocked(writeHomepageStateAndArtifactJson).mockResolvedValue(undefined);
     vi.mocked(runHttpCheck).mockResolvedValue({
       status: 'up',
       latencyMs: 21,
@@ -208,7 +257,7 @@ describe('scheduler/scheduled regression', () => {
     expect(waitUntil).toHaveBeenCalledTimes(1);
   });
 
-  it('switches to full homepage snapshot refresh when homepage traffic was seen recently', async () => {
+  it('switches to homepage state and artifact refresh when homepage traffic was seen recently', async () => {
     vi.mocked(wasHomepageRecentlyAccessed).mockResolvedValue(true);
 
     const env = createEnv({ dueRows: [] });
@@ -216,19 +265,25 @@ describe('scheduler/scheduled regression', () => {
     const expectedNow = Math.floor(Date.now() / 1000);
 
     await runScheduledTick(env, { waitUntil } as unknown as ExecutionContext);
+    await Promise.all(waitUntil.mock.calls.map((call) => call[0] as Promise<unknown>));
 
     expect(wasHomepageRecentlyAccessed).toHaveBeenCalledWith(env.DB, expectedNow);
-    expect(refreshPublicHomepageSnapshotIfNeeded).toHaveBeenCalledWith({
+    expect(refreshPublicHomepageArtifactSnapshotIfNeeded).not.toHaveBeenCalled();
+    expect(buildPublicHomepageState).toHaveBeenCalledWith(env.DB, expectedNow);
+    expect(buildPublicHomepagePayloadFromState).toHaveBeenCalledWith({
+      state: expect.any(Object),
+      now: expectedNow,
+      activeIncidents: [],
+      maintenanceWindows: { active: [], upcoming: [] },
+      monitorLimit: 12,
+    });
+    expect(writeHomepageStateAndArtifactJson).toHaveBeenCalledWith({
       db: env.DB,
       now: expectedNow,
-      compute: expect.any(Function),
+      stateGeneratedAt: expectedNow,
+      stateBodyJson: expect.any(String),
+      artifactPayload: expect.objectContaining({ generated_at: expectedNow }),
     });
-    expect(refreshPublicHomepageArtifactSnapshotIfNeeded).not.toHaveBeenCalled();
-
-    const refreshArgs = vi.mocked(refreshPublicHomepageSnapshotIfNeeded).mock.calls[0]?.[0];
-    expect(refreshArgs).toBeDefined();
-    await refreshArgs?.compute();
-    expect(computePublicHomepagePayload).toHaveBeenCalledWith(env.DB, expectedNow);
     expect(waitUntil).toHaveBeenCalledTimes(1);
   });
 
