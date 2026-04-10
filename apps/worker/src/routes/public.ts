@@ -5,9 +5,10 @@ import { getDb, monitors } from '@uptimer/db';
 
 import type { Env } from '../env';
 import { hasValidAdminTokenRequest } from '../middleware/auth';
+import type { PublicHomepageResponse } from '../schemas/public-homepage';
 import {
+  computePublicHomepagePayload,
   homepageFromStatusPayload,
-  readHomepageHistoryPreviews,
 } from '../public/homepage';
 import { computePublicStatusPayload } from '../public/status';
 import {
@@ -25,12 +26,17 @@ import {
   applyStatusCacheHeaders,
   readHomepageSnapshotArtifactJson,
   readHomepageSnapshotJson,
+  readStaleHomepageSnapshotJson,
   readStatusSnapshot,
-  readStaleHomepageSnapshot,
+  readStatusSnapshotJson,
   readStaleHomepageSnapshotArtifact,
   readStaleHomepageSnapshotArtifactJson,
+  readStaleStatusSnapshotJson,
+  markHomepageAccessIfNeeded,
   toSnapshotPayload,
+  writeHomepageDataSnapshotJson,
   writeStatusSnapshot,
+  writeStatusSnapshotJson,
 } from '../snapshots';
 
 import { AppError } from '../middleware/errors';
@@ -120,6 +126,34 @@ function shouldPreferRecentHomepageArtifact(opts: {
     computed.overall_status !== snapshot.overall_status ||
     computed.banner.status !== snapshot.banner.status
   );
+}
+
+function homepagePreviewsFromArtifact(
+  artifact:
+    | {
+        data: {
+          snapshot: Pick<
+            PublicHomepageResponse,
+            'resolved_incident_preview' | 'maintenance_history_preview'
+          >;
+        };
+      }
+    | null,
+): {
+  resolvedIncidentPreview: PublicHomepageResponse['resolved_incident_preview'];
+  maintenanceHistoryPreview: PublicHomepageResponse['maintenance_history_preview'];
+} {
+  if (!artifact) {
+    return {
+      resolvedIncidentPreview: null,
+      maintenanceHistoryPreview: null,
+    };
+  }
+
+  return {
+    resolvedIncidentPreview: artifact.data.snapshot.resolved_incident_preview,
+    maintenanceHistoryPreview: artifact.data.snapshot.maintenance_history_preview,
+  };
 }
 
 async function readStaleStatusSnapshot(
@@ -540,9 +574,10 @@ publicRoutes.get('/status', async (c) => {
     return applyPrivateNoStore(c.json(payload));
   }
 
-  const snapshot = await readStatusSnapshot(c.env.DB, now);
+  const snapshot = await readStatusSnapshotJson(c.env.DB, now);
   if (snapshot) {
-    const res = c.json(snapshot.data);
+    c.header('Content-Type', 'application/json; charset=utf-8');
+    const res = c.body(snapshot.bodyJson);
     applyStatusCacheHeaders(res, snapshot.age);
 
     // If we're close to the freshness boundary, trigger a background refresh.
@@ -562,11 +597,13 @@ publicRoutes.get('/status', async (c) => {
   }
   try {
     const payload = await computePublicStatusPayload(c.env.DB, now);
-    const res = c.json(payload);
+    const bodyJson = JSON.stringify(payload);
+    c.header('Content-Type', 'application/json; charset=utf-8');
+    const res = c.body(bodyJson);
     applyStatusCacheHeaders(res, 0);
 
     c.executionCtx.waitUntil(
-      writeStatusSnapshot(c.env.DB, now, payload).catch((err) => {
+      writeStatusSnapshotJson(c.env.DB, now, payload.generated_at, bodyJson).catch((err) => {
         console.warn('public snapshot: write failed', err);
       }),
     );
@@ -577,9 +614,10 @@ publicRoutes.get('/status', async (c) => {
 
     // Last-resort fallback for weak networks / D1 hiccups: serve a stale snapshot (bounded)
     // instead of failing the entire status page.
-    const stale = await readStaleStatusSnapshot(c.env.DB, now, 10 * 60);
+    const stale = await readStaleStatusSnapshotJson(c.env.DB, now);
     if (stale) {
-      const res = c.json(toSnapshotPayload(stale.data));
+      c.header('Content-Type', 'application/json; charset=utf-8');
+      const res = c.body(stale.bodyJson);
       applyStatusCacheHeaders(res, Math.min(60, stale.age));
       return res;
     }
@@ -590,76 +628,84 @@ publicRoutes.get('/status', async (c) => {
 
 publicRoutes.get('/homepage', async (c) => {
   const now = Math.floor(Date.now() / 1000);
+  const markHomepageAccess = () =>
+    c.executionCtx.waitUntil(
+      markHomepageAccessIfNeeded(c.env.DB, now).catch((err) => {
+        console.warn('homepage access: mark failed', err);
+      }),
+    );
   const snapshot = await readHomepageSnapshotJson(c.env.DB, now);
   if (snapshot) {
+    if (snapshot.age >= 30) {
+      markHomepageAccess();
+    }
     c.header('Content-Type', 'application/json; charset=utf-8');
     const res = c.body(snapshot.bodyJson);
     applyHomepageCacheHeaders(res, snapshot.age);
     return res;
   }
 
-  const historyPreviewsPromise = readHomepageHistoryPreviews(c.env.DB, now).catch((err) => {
-    console.warn('public homepage: preview read failed', err);
-    return {
-      resolvedIncidentPreview: null,
-      maintenanceHistoryPreview: null,
-    };
-  });
-  const statusSnapshot = await readStatusSnapshot(c.env.DB, now);
-  if (statusSnapshot) {
-    const payload = homepageFromStatusPayload(
-      statusSnapshot.data,
-      await historyPreviewsPromise,
-    );
-    const res = c.json(payload);
-    applyHomepageCacheHeaders(res, statusSnapshot.age);
-    return res;
-  }
-
   const artifactSnapshotPromise = readStaleHomepageSnapshotArtifact(c.env.DB, now);
 
   try {
-    const statusPayload = await computePublicStatusPayload(c.env.DB, now);
+    const payload = await computePublicHomepagePayload(c.env.DB, now);
     const artifactSnapshot = await artifactSnapshotPromise;
     if (
       artifactSnapshot &&
-      shouldPreferRecentHomepageArtifact({ artifact: artifactSnapshot, computed: statusPayload })
+      shouldPreferRecentHomepageArtifact({ artifact: artifactSnapshot, computed: payload })
     ) {
+      markHomepageAccess();
       const res = c.json(artifactSnapshot.data.snapshot);
       applyHomepageCacheHeaders(res, Math.min(60, artifactSnapshot.age));
       return res;
     }
 
-    const payload = homepageFromStatusPayload(statusPayload, await historyPreviewsPromise);
-    const res = c.json(payload);
+    markHomepageAccess();
+    const bodyJson = JSON.stringify(payload);
+    c.header('Content-Type', 'application/json; charset=utf-8');
+    const res = c.body(bodyJson);
     applyHomepageCacheHeaders(res, 0);
 
     c.executionCtx.waitUntil(
-      writeStatusSnapshot(c.env.DB, now, statusPayload).catch((err) => {
-        console.warn('public snapshot: write failed', err);
+      writeHomepageDataSnapshotJson(c.env.DB, now, payload.generated_at, bodyJson).catch((err) => {
+        console.warn('homepage snapshot: write failed', err);
       }),
     );
 
     return res;
   } catch (err) {
-    console.warn('public homepage: secondary status compute failed', err);
+    console.warn('public homepage: direct compute failed', err);
 
-    const staleHomepage = await readStaleHomepageSnapshot(c.env.DB, now);
+    const statusSnapshot = await readStatusSnapshot(c.env.DB, now);
+    if (statusSnapshot) {
+      const artifactSnapshot = await artifactSnapshotPromise;
+      const payload = homepageFromStatusPayload(
+        statusSnapshot.data,
+        homepagePreviewsFromArtifact(artifactSnapshot),
+      );
+      markHomepageAccess();
+      const res = c.json(payload);
+      applyHomepageCacheHeaders(res, statusSnapshot.age);
+      return res;
+    }
+
+    const staleHomepage = await readStaleHomepageSnapshotJson(c.env.DB, now);
     if (staleHomepage) {
-      const res = c.json(staleHomepage.data);
+      markHomepageAccess();
+      c.header('Content-Type', 'application/json; charset=utf-8');
+      const res = c.body(staleHomepage.bodyJson);
       applyHomepageCacheHeaders(res, Math.min(60, staleHomepage.age));
       return res;
     }
 
     const staleStatus = await readStaleStatusSnapshot(c.env.DB, now, 10 * 60);
     if (staleStatus) {
+      const artifactSnapshot = await artifactSnapshotPromise;
       const payload = homepageFromStatusPayload(
         toSnapshotPayload(staleStatus.data),
-        await historyPreviewsPromise.catch(() => ({
-          resolvedIncidentPreview: null,
-          maintenanceHistoryPreview: null,
-        })),
+        homepagePreviewsFromArtifact(artifactSnapshot),
       );
+      markHomepageAccess();
       const res = c.json(payload);
       applyHomepageCacheHeaders(res, Math.min(60, staleStatus.age));
       return res;
@@ -667,6 +713,7 @@ publicRoutes.get('/homepage', async (c) => {
 
     const staleArtifact = await artifactSnapshotPromise;
     if (staleArtifact) {
+      markHomepageAccess();
       const res = c.json(staleArtifact.data.snapshot);
       applyHomepageCacheHeaders(res, Math.min(60, staleArtifact.age));
       return res;
@@ -678,8 +725,15 @@ publicRoutes.get('/homepage', async (c) => {
 
 publicRoutes.get('/homepage-artifact', async (c) => {
   const now = Math.floor(Date.now() / 1000);
+  const markHomepageAccess = () =>
+    c.executionCtx.waitUntil(
+      markHomepageAccessIfNeeded(c.env.DB, now).catch((err) => {
+        console.warn('homepage access: mark failed', err);
+      }),
+    );
   const snapshot = await readHomepageSnapshotArtifactJson(c.env.DB, now);
   if (snapshot) {
+    markHomepageAccess();
     c.header('Content-Type', 'application/json; charset=utf-8');
     const res = c.body(snapshot.bodyJson);
     applyHomepageCacheHeaders(res, snapshot.age);
@@ -688,6 +742,7 @@ publicRoutes.get('/homepage-artifact', async (c) => {
 
   const stale = await readStaleHomepageSnapshotArtifactJson(c.env.DB, now);
   if (stale) {
+    markHomepageAccess();
     c.header('Content-Type', 'application/json; charset=utf-8');
     const res = c.body(stale.bodyJson);
     applyHomepageCacheHeaders(res, Math.min(60, stale.age));
