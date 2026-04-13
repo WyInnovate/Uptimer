@@ -22,7 +22,7 @@ import { runTcpCheck } from '../monitor/tcp';
 import type { CheckOutcome } from '../monitor/types';
 import { dispatchWebhookToChannels, type WebhookChannel } from '../notify/webhook';
 import { computePublicHomepagePayload } from '../public/homepage';
-import { refreshPublicHomepageSnapshotIfNeeded } from '../snapshots';
+import { refreshPublicHomepageSnapshot } from '../snapshots';
 import { readSettings } from '../settings';
 import { acquireLease } from './lock';
 
@@ -641,7 +641,7 @@ export async function runScheduledTick(env: Env, ctx: ExecutionContext): Promise
   const now = Math.floor(Date.now() / 1000);
   const checkedAt = Math.floor(now / 60) * 60;
   const queueHomepageRefresh = () =>
-    refreshPublicHomepageSnapshotIfNeeded({
+    refreshPublicHomepageSnapshot({
       db: env.DB,
       now,
       compute: async () => {
