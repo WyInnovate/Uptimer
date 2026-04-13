@@ -16,6 +16,14 @@ const READ_SNAPSHOT_SQL = `
   FROM public_snapshots
   WHERE key = ?1
 `;
+const UPSERT_SNAPSHOT_SQL = `
+  INSERT INTO public_snapshots (key, generated_at, body_json, updated_at)
+  VALUES (?1, ?2, ?3, ?4)
+  ON CONFLICT(key) DO UPDATE SET
+    generated_at = excluded.generated_at,
+    body_json = excluded.body_json,
+    updated_at = excluded.updated_at
+`;
 
 const SPLIT_SNAPSHOT_VERSION = 3;
 const LEGACY_COMBINED_SNAPSHOT_VERSION = 2;
@@ -29,6 +37,7 @@ export type PublicHomepageRenderArtifact = {
 };
 
 const readSnapshotStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
+const upsertSnapshotStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -722,18 +731,13 @@ function homepageSnapshotUpsertStatement(
   bodyJson: string,
   now: number,
 ): D1PreparedStatement {
-  return db
-    .prepare(
-      `
-      INSERT INTO public_snapshots (key, generated_at, body_json, updated_at)
-      VALUES (?1, ?2, ?3, ?4)
-      ON CONFLICT(key) DO UPDATE SET
-        generated_at = excluded.generated_at,
-        body_json = excluded.body_json,
-        updated_at = excluded.updated_at
-    `,
-    )
-    .bind(key, generatedAt, bodyJson, now);
+  const cached = upsertSnapshotStatementByDb.get(db);
+  const statement = cached ?? db.prepare(UPSERT_SNAPSHOT_SQL);
+  if (!cached) {
+    upsertSnapshotStatementByDb.set(db, statement);
+  }
+
+  return statement.bind(key, generatedAt, bodyJson, now);
 }
 
 export async function writeHomepageSnapshot(

@@ -81,6 +81,103 @@ type NotifyContext = {
   channels: WebhookChannelWithMeta[];
 };
 
+const listActiveWebhookChannelsStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
+const listDueMonitorsStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
+const persistStatementTemplatesByDb = new WeakMap<D1Database, PersistStatementTemplates>();
+const activeWebhookChannelsCacheByDb = new WeakMap<
+  D1Database,
+  { fetchedAtMs: number; channels: WebhookChannelWithMeta[] }
+>();
+
+const LIST_ACTIVE_WEBHOOK_CHANNELS_SQL = `
+  SELECT id, name, config_json, created_at
+  FROM notification_channels
+  WHERE is_active = 1 AND type = 'webhook'
+  ORDER BY id
+`;
+const ACTIVE_WEBHOOK_CHANNELS_CACHE_TTL_MS = 2 * 60_000;
+
+const LIST_DUE_MONITORS_SQL = `
+  SELECT
+    m.id,
+    m.name,
+    m.type,
+    m.target,
+    m.interval_sec,
+    m.timeout_ms,
+    m.http_method,
+    m.http_headers_json,
+    m.http_body,
+    m.expected_status_json,
+    m.response_keyword,
+    m.response_keyword_mode,
+    m.response_forbidden_keyword,
+    m.response_forbidden_keyword_mode,
+    s.status AS state_status,
+    s.last_error AS state_last_error,
+    s.last_changed_at,
+    s.consecutive_failures,
+    s.consecutive_successes
+  FROM monitors m
+  LEFT JOIN monitor_state s ON s.monitor_id = m.id
+  WHERE m.is_active = 1
+    AND (s.status IS NULL OR s.status != 'paused')
+    AND (s.last_checked_at IS NULL OR s.last_checked_at <= ?1 - m.interval_sec)
+  ORDER BY m.id
+`;
+
+const PERSIST_STATEMENTS_SQL = {
+  insertCheckResult: `
+    INSERT INTO check_results (
+      monitor_id,
+      checked_at,
+      status,
+      latency_ms,
+      http_status,
+      error,
+      location,
+      attempt
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+  `,
+  upsertMonitorState: `
+    INSERT INTO monitor_state (
+      monitor_id,
+      status,
+      last_checked_at,
+      last_changed_at,
+      last_latency_ms,
+      last_error,
+      consecutive_failures,
+      consecutive_successes
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+    ON CONFLICT(monitor_id) DO UPDATE SET
+      status = excluded.status,
+      last_checked_at = excluded.last_checked_at,
+      last_changed_at = excluded.last_changed_at,
+      last_latency_ms = excluded.last_latency_ms,
+      last_error = excluded.last_error,
+      consecutive_failures = excluded.consecutive_failures,
+      consecutive_successes = excluded.consecutive_successes
+  `,
+  openOutageIfMissing: `
+    INSERT INTO outages (monitor_id, started_at, ended_at, initial_error, last_error)
+    SELECT ?1, ?2, NULL, ?3, ?4
+    WHERE NOT EXISTS (
+      SELECT 1 FROM outages WHERE monitor_id = ?5 AND ended_at IS NULL
+    )
+  `,
+  closeOutage: `
+    UPDATE outages
+    SET ended_at = ?1
+    WHERE monitor_id = ?2 AND ended_at IS NULL
+  `,
+  updateOutageLastError: `
+    UPDATE outages
+    SET last_error = ?1
+    WHERE monitor_id = ?2 AND ended_at IS NULL
+  `,
+} as const;
+
 type CompletedDueMonitor = {
   row: DueMonitorRow;
   checkedAt: number;
@@ -93,23 +190,31 @@ type CompletedDueMonitor = {
 };
 
 async function listActiveWebhookChannels(db: D1Database): Promise<WebhookChannelWithMeta[]> {
-  const { results } = await db
-    .prepare(
-      `
-      SELECT id, name, config_json, created_at
-      FROM notification_channels
-      WHERE is_active = 1 AND type = 'webhook'
-      ORDER BY id
-    `,
-    )
-    .all<ActiveWebhookChannelRow>();
+  const cachedResult = activeWebhookChannelsCacheByDb.get(db);
+  if (
+    cachedResult &&
+    Date.now() - cachedResult.fetchedAtMs < ACTIVE_WEBHOOK_CHANNELS_CACHE_TTL_MS
+  ) {
+    return cachedResult.channels;
+  }
 
-  return (results ?? []).map((r) => ({
+  const cached = listActiveWebhookChannelsStatementByDb.get(db);
+  const statement = cached ?? db.prepare(LIST_ACTIVE_WEBHOOK_CHANNELS_SQL);
+  if (!cached) {
+    listActiveWebhookChannelsStatementByDb.set(db, statement);
+  }
+
+  const { results } = await statement.all<ActiveWebhookChannelRow>();
+
+  const channels = (results ?? []).map((r) => ({
     id: r.id,
     name: r.name,
     config: parseDbJson(webhookChannelConfigSchema, r.config_json, { field: 'config_json' }),
     created_at: r.created_at,
   }));
+
+  activeWebhookChannelsCacheByDb.set(db, { fetchedAtMs: Date.now(), channels });
+  return channels;
 }
 
 async function listMaintenanceSuppressedMonitorIds(
@@ -267,39 +372,13 @@ function toMonitorStatus(value: string | null): MonitorStatus | null {
 }
 
 async function listDueMonitors(db: D1Database, checkedAt: number): Promise<DueMonitorRow[]> {
-  const { results } = await db
-    .prepare(
-      `
-      SELECT
-        m.id,
-        m.name,
-        m.type,
-        m.target,
-        m.interval_sec,
-        m.timeout_ms,
-        m.http_method,
-        m.http_headers_json,
-        m.http_body,
-        m.expected_status_json,
-        m.response_keyword,
-        m.response_keyword_mode,
-        m.response_forbidden_keyword,
-        m.response_forbidden_keyword_mode,
-        s.status AS state_status,
-        s.last_error AS state_last_error,
-        s.last_changed_at,
-        s.consecutive_failures,
-        s.consecutive_successes
-      FROM monitors m
-      LEFT JOIN monitor_state s ON s.monitor_id = m.id
-      WHERE m.is_active = 1
-        AND (s.status IS NULL OR s.status != 'paused')
-        AND (s.last_checked_at IS NULL OR s.last_checked_at <= ?1 - m.interval_sec)
-      ORDER BY m.id
-    `,
-    )
-    .bind(checkedAt)
-    .all<DueMonitorRow>();
+  const cached = listDueMonitorsStatementByDb.get(db);
+  const statement = cached ?? db.prepare(LIST_DUE_MONITORS_SQL);
+  if (!cached) {
+    listDueMonitorsStatementByDb.set(db, statement);
+  }
+
+  const { results } = await statement.bind(checkedAt).all<DueMonitorRow>();
 
   return results ?? [];
 }
@@ -501,67 +580,17 @@ async function persistCompletedMonitors(
   db: D1Database,
   completed: CompletedDueMonitor[],
 ): Promise<void> {
-  const templates: PersistStatementTemplates = {
-    insertCheckResult: db.prepare(
-      `
-      INSERT INTO check_results (
-        monitor_id,
-        checked_at,
-        status,
-        latency_ms,
-        http_status,
-        error,
-        location,
-        attempt
-      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-    `,
-    ),
-    upsertMonitorState: db.prepare(
-      `
-      INSERT INTO monitor_state (
-        monitor_id,
-        status,
-        last_checked_at,
-        last_changed_at,
-        last_latency_ms,
-        last_error,
-        consecutive_failures,
-        consecutive_successes
-      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-      ON CONFLICT(monitor_id) DO UPDATE SET
-        status = excluded.status,
-        last_checked_at = excluded.last_checked_at,
-        last_changed_at = excluded.last_changed_at,
-        last_latency_ms = excluded.last_latency_ms,
-        last_error = excluded.last_error,
-        consecutive_failures = excluded.consecutive_failures,
-        consecutive_successes = excluded.consecutive_successes
-    `,
-    ),
-    openOutageIfMissing: db.prepare(
-      `
-      INSERT INTO outages (monitor_id, started_at, ended_at, initial_error, last_error)
-      SELECT ?1, ?2, NULL, ?3, ?4
-      WHERE NOT EXISTS (
-        SELECT 1 FROM outages WHERE monitor_id = ?5 AND ended_at IS NULL
-      )
-    `,
-    ),
-    closeOutage: db.prepare(
-      `
-      UPDATE outages
-      SET ended_at = ?1
-      WHERE monitor_id = ?2 AND ended_at IS NULL
-    `,
-    ),
-    updateOutageLastError: db.prepare(
-      `
-      UPDATE outages
-      SET last_error = ?1
-      WHERE monitor_id = ?2 AND ended_at IS NULL
-    `,
-    ),
+  const cached = persistStatementTemplatesByDb.get(db);
+  const templates = cached ?? {
+    insertCheckResult: db.prepare(PERSIST_STATEMENTS_SQL.insertCheckResult),
+    upsertMonitorState: db.prepare(PERSIST_STATEMENTS_SQL.upsertMonitorState),
+    openOutageIfMissing: db.prepare(PERSIST_STATEMENTS_SQL.openOutageIfMissing),
+    closeOutage: db.prepare(PERSIST_STATEMENTS_SQL.closeOutage),
+    updateOutageLastError: db.prepare(PERSIST_STATEMENTS_SQL.updateOutageLastError),
   };
+  if (!cached) {
+    persistStatementTemplatesByDb.set(db, templates);
+  }
 
   for (let i = 0; i < completed.length; i += PERSIST_BATCH_SIZE) {
     const chunk = completed.slice(i, i + PERSIST_BATCH_SIZE);

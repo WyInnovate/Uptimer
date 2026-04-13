@@ -8,8 +8,17 @@ const READ_STATUS_SQL = `
   FROM public_snapshots
   WHERE key = ?1
 `;
+const UPSERT_STATUS_SQL = `
+  INSERT INTO public_snapshots (key, generated_at, body_json, updated_at)
+  VALUES (?1, ?2, ?3, ?4)
+  ON CONFLICT(key) DO UPDATE SET
+    generated_at = excluded.generated_at,
+    body_json = excluded.body_json,
+    updated_at = excluded.updated_at
+`;
 
 const readStatusStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
+const upsertStatusStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
 
 export function getSnapshotKey() {
   return SNAPSHOT_KEY;
@@ -134,19 +143,13 @@ export async function writeStatusSnapshot(
   payload: PublicStatusResponse,
 ): Promise<void> {
   const bodyJson = JSON.stringify(payload);
-  await db
-    .prepare(
-      `
-      INSERT INTO public_snapshots (key, generated_at, body_json, updated_at)
-      VALUES (?1, ?2, ?3, ?4)
-      ON CONFLICT(key) DO UPDATE SET
-        generated_at = excluded.generated_at,
-        body_json = excluded.body_json,
-        updated_at = excluded.updated_at
-    `,
-    )
-    .bind(SNAPSHOT_KEY, payload.generated_at, bodyJson, now)
-    .run();
+  const cached = upsertStatusStatementByDb.get(db);
+  const statement = cached ?? db.prepare(UPSERT_STATUS_SQL);
+  if (!cached) {
+    upsertStatusStatementByDb.set(db, statement);
+  }
+
+  await statement.bind(SNAPSHOT_KEY, payload.generated_at, bodyJson, now).run();
 }
 
 export function applyStatusCacheHeaders(res: Response, ageSeconds: number): void {
