@@ -1,5 +1,6 @@
 import type { PublicHomepageResponse } from '../schemas/public-homepage';
 import type { PublicStatusResponse } from '../schemas/public-status';
+import type { Trace } from '../observability/trace';
 
 import {
   buildPublicStatusBanner,
@@ -68,7 +69,20 @@ type HomepageUptimeDayStripAggRawRow = [
 type HomepageMonitorDataOptions = {
   cardLimit?: number;
   uptimeRatingLevel?: 1 | 2 | 3 | 4 | 5;
+  trace?: Trace;
 };
+
+function withTraceSync<T>(trace: Trace | undefined, name: string, fn: () => T): T {
+  return trace ? trace.time(name, fn) : fn();
+}
+
+async function withTraceAsync<T>(
+  trace: Trace | undefined,
+  name: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return trace ? trace.timeAsync(name, fn) : await fn();
+}
 
 function safeParseJsonArray<T>(text: string | null): T[] {
   if (!text) return [];
@@ -432,6 +446,7 @@ async function buildHomepageMonitorCardsFromRows(
   now: number,
   rows: HomepageMonitorRow[],
   maintenanceMonitorIds: ReadonlySet<number>,
+  trace?: Trace,
 ): Promise<HomepageMonitorCard[]> {
   if (rows.length === 0) {
     return [];
@@ -460,9 +475,13 @@ async function buildHomepageMonitorCardsFromRows(
     monitorIndexById.set(monitor.id, index);
   }
 
-  const heartbeatRowsPromise = db
-    .prepare(
-      `
+  const heartbeatRowsPromise = withTraceAsync(
+    trace,
+    'homepage_cards_heartbeat_query',
+    async () =>
+      await db
+        .prepare(
+          `
       SELECT
         monitor_id,
         json_group_array(checked_at) AS checked_at_json,
@@ -499,14 +518,19 @@ async function buildHomepageMonitorCardsFromRows(
       GROUP BY monitor_id
       ORDER BY monitor_id
     `,
-    )
-    .bind(...selectedIds, HEARTBEAT_POINTS)
-    .raw<HomepageHeartbeatStripAggRawRow>()
-    .then((rows) => rows ?? []);
+        )
+        .bind(...selectedIds, HEARTBEAT_POINTS)
+        .raw<HomepageHeartbeatStripAggRawRow>()
+        .then((resultRows) => resultRows ?? []),
+  );
 
-  const rollupRowsPromise = db
-    .prepare(
-      `
+  const rollupRowsPromise = withTraceAsync(
+    trace,
+    'homepage_cards_rollup_query',
+    async () =>
+      await db
+        .prepare(
+          `
       SELECT
         monitor_id,
         json_group_array(day_start_at) AS day_start_at_json,
@@ -531,22 +555,25 @@ async function buildHomepageMonitorCardsFromRows(
       GROUP BY monitor_id
       ORDER BY monitor_id
     `,
-    )
-    .bind(...selectedIds, rangeStart, rangeEndFullDays)
-    .raw<HomepageUptimeDayStripAggRawRow>()
-    .then((rows) => rows ?? []);
+        )
+        .bind(...selectedIds, rangeStart, rangeEndFullDays)
+        .raw<HomepageUptimeDayStripAggRawRow>()
+        .then((resultRows) => resultRows ?? []),
+  );
 
   const todayByMonitorIdPromise: Promise<Map<number, UptimeWindowTotals>> = needsToday
-    ? computeTodayPartialUptimeBatch(
-        db,
-        rows.map((monitor) => ({
-          id: monitor.id,
-          interval_sec: monitor.interval_sec,
-          created_at: monitor.created_at,
-          last_checked_at: monitor.last_checked_at,
-        })),
-        Math.max(todayStartAt, rangeStart),
-        rangeEnd,
+    ? withTraceAsync(trace, 'homepage_cards_today_query', async () =>
+        await computeTodayPartialUptimeBatch(
+          db,
+          rows.map((monitor) => ({
+            id: monitor.id,
+            interval_sec: monitor.interval_sec,
+            created_at: monitor.created_at,
+            last_checked_at: monitor.last_checked_at,
+          })),
+          Math.max(todayStartAt, rangeStart),
+          rangeEnd,
+        ),
       )
     : Promise.resolve(new Map<number, UptimeWindowTotals>());
 
@@ -556,61 +583,69 @@ async function buildHomepageMonitorCardsFromRows(
     todayByMonitorIdPromise,
   ]);
 
-  for (const row of heartbeatRows) {
-    const index = monitorIndexById.get(row[0]);
-    if (index === undefined) continue;
+  withTraceSync(trace, 'homepage_cards_heartbeat_hydrate', () => {
+    for (const row of heartbeatRows) {
+      const index = monitorIndexById.get(row[0]);
+      if (index === undefined) continue;
 
-    const monitor = monitors[index];
-    if (!monitor) continue;
+      const monitor = monitors[index];
+      if (!monitor) continue;
 
-    monitor.heartbeat_strip.checked_at = safeParseJsonArray<number>(row[1]);
-    monitor.heartbeat_strip.latency_ms = safeParseJsonArray<number | null>(row[2]);
-    monitor.heartbeat_strip.status_codes = row[3] ?? '';
-  }
+      monitor.heartbeat_strip.checked_at = safeParseJsonArray<number>(row[1]);
+      monitor.heartbeat_strip.latency_ms = safeParseJsonArray<number | null>(row[2]);
+      monitor.heartbeat_strip.status_codes = row[3] ?? '';
+    }
+  });
 
   const totalsByMonitor = Array.from({ length: monitors.length }, () => ({
     totalSec: 0,
     uptimeSec: 0,
   }));
-  for (const row of rollupRows) {
-    const index = monitorIndexById.get(row[0]);
-    if (index === undefined) continue;
-
-    const monitor = monitors[index];
-    const totals = totalsByMonitor[index];
-    if (!monitor || !totals) continue;
-
-    monitor.uptime_day_strip.day_start_at = safeParseJsonArray<number>(row[1]);
-    monitor.uptime_day_strip.downtime_sec = safeParseJsonArray<number>(row[2]);
-    monitor.uptime_day_strip.unknown_sec = safeParseJsonArray<number>(row[3]);
-    monitor.uptime_day_strip.uptime_pct_milli = safeParseJsonArray<number | null>(row[4]);
-    totals.totalSec = row[5] ?? 0;
-    totals.uptimeSec = row[6] ?? 0;
-  }
-
-  if (needsToday) {
-    for (const [monitorId, today] of todayByMonitorId) {
-      const index = monitorIndexById.get(monitorId);
+  withTraceSync(trace, 'homepage_cards_rollup_hydrate', () => {
+    for (const row of rollupRows) {
+      const index = monitorIndexById.get(row[0]);
       if (index === undefined) continue;
+
       const monitor = monitors[index];
       const totals = totalsByMonitor[index];
       if (!monitor || !totals) continue;
-      addUptimeDay(monitor, totals, todayStartAt, today);
+
+      monitor.uptime_day_strip.day_start_at = safeParseJsonArray<number>(row[1]);
+      monitor.uptime_day_strip.downtime_sec = safeParseJsonArray<number>(row[2]);
+      monitor.uptime_day_strip.unknown_sec = safeParseJsonArray<number>(row[3]);
+      monitor.uptime_day_strip.uptime_pct_milli = safeParseJsonArray<number | null>(row[4]);
+      totals.totalSec = row[5] ?? 0;
+      totals.uptimeSec = row[6] ?? 0;
     }
+  });
+
+  if (needsToday) {
+    withTraceSync(trace, 'homepage_cards_today_hydrate', () => {
+      for (const [monitorId, today] of todayByMonitorId) {
+        const index = monitorIndexById.get(monitorId);
+        if (index === undefined) continue;
+        const monitor = monitors[index];
+        const totals = totalsByMonitor[index];
+        if (!monitor || !totals) continue;
+        addUptimeDay(monitor, totals, todayStartAt, today);
+      }
+    });
   }
 
-  for (let index = 0; index < monitors.length; index += 1) {
-    const monitor = monitors[index];
-    const totals = totalsByMonitor[index];
-    if (!monitor || !totals) continue;
+  withTraceSync(trace, 'homepage_cards_finalize', () => {
+    for (let index = 0; index < monitors.length; index += 1) {
+      const monitor = monitors[index];
+      const totals = totalsByMonitor[index];
+      if (!monitor || !totals) continue;
 
-    monitor.uptime_30d =
-      totals.totalSec === 0
-        ? null
-        : {
-            uptime_pct: (totals.uptimeSec / totals.totalSec) * 100,
-          };
-  }
+      monitor.uptime_30d =
+        totals.totalSec === 0
+          ? null
+          : {
+              uptime_pct: (totals.uptimeSec / totals.totalSec) * 100,
+            };
+    }
+  });
 
   return monitors;
 }
@@ -627,16 +662,23 @@ async function buildHomepageMonitorData(
   overallStatus: HomepageMonitorStatus;
   uptimeRatingLevel: 1 | 2 | 3 | 4 | 5;
 }> {
-  const rawMonitors = await listHomepageMonitorRows(db, includeHiddenMonitors);
+  const trace = opts.trace;
+  const rawMonitors = await withTraceAsync(trace, 'homepage_monitor_rows', async () =>
+    await listHomepageMonitorRows(db, includeHiddenMonitors),
+  );
   const monitorCountTotal = rawMonitors.length;
   const ids = rawMonitors.map((monitor) => monitor.id);
   const selectedRows =
     opts.cardLimit === undefined ? rawMonitors : rawMonitors.slice(0, Math.max(0, opts.cardLimit));
 
   const [maintenanceMonitorIds, uptimeRatingLevel] = await Promise.all([
-    listHomepageMaintenanceMonitorIds(db, now, ids),
+    withTraceAsync(trace, 'homepage_maintenance_monitor_ids', async () =>
+      await listHomepageMaintenanceMonitorIds(db, now, ids),
+    ),
     opts.uptimeRatingLevel === undefined
-      ? readHomepageUptimeRatingLevel(db)
+      ? withTraceAsync(trace, 'homepage_uptime_rating_setting', async () =>
+          await readHomepageUptimeRatingLevel(db),
+        )
       : Promise.resolve(opts.uptimeRatingLevel),
   ]);
 
@@ -648,13 +690,15 @@ async function buildHomepageMonitorData(
     unknown: 0,
   };
 
-  for (let index = 0; index < rawMonitors.length; index += 1) {
-    const row = rawMonitors[index];
-    if (!row) continue;
+  withTraceSync(trace, 'homepage_summary_counts', () => {
+    for (let index = 0; index < rawMonitors.length; index += 1) {
+      const row = rawMonitors[index];
+      if (!row) continue;
 
-    const presentation = computeHomepageMonitorPresentation(row, now, maintenanceMonitorIds);
-    summary[presentation.status] += 1;
-  }
+      const presentation = computeHomepageMonitorPresentation(row, now, maintenanceMonitorIds);
+      summary[presentation.status] += 1;
+    }
+  });
 
   if (selectedRows.length === 0) {
     return {
@@ -666,11 +710,14 @@ async function buildHomepageMonitorData(
     };
   }
 
-  const monitors = await buildHomepageMonitorCardsFromRows(
-    db,
-    now,
-    selectedRows,
-    maintenanceMonitorIds,
+  const monitors = await withTraceAsync(trace, 'homepage_monitor_cards', async () =>
+    await buildHomepageMonitorCardsFromRows(
+      db,
+      now,
+      selectedRows,
+      maintenanceMonitorIds,
+      trace,
+    ),
   );
 
   return {
@@ -832,14 +879,19 @@ async function findLatestVisibleHistoricalMaintenanceWindow(
 export async function readHomepageHistoryPreviews(
   db: D1Database,
   now: number,
+  trace?: Trace,
 ): Promise<{
   resolvedIncidentPreview: IncidentSummary | null;
   maintenanceHistoryPreview: MaintenancePreview | null;
 }> {
   const includeHiddenMonitors = false;
   const [resolvedIncidentPreview, maintenanceHistoryPreview] = await Promise.all([
-    findLatestVisibleResolvedIncident(db, includeHiddenMonitors),
-    findLatestVisibleHistoricalMaintenanceWindow(db, now, includeHiddenMonitors),
+    withTraceAsync(trace, 'homepage_history_incident_preview', async () =>
+      await findLatestVisibleResolvedIncident(db, includeHiddenMonitors),
+    ),
+    withTraceAsync(trace, 'homepage_history_maintenance_preview', async () =>
+      await findLatestVisibleHistoricalMaintenanceWindow(db, now, includeHiddenMonitors),
+    ),
   ]);
 
   return {
@@ -909,9 +961,13 @@ export function homepageFromStatusPayload(
 export async function computePublicHomepagePayload(
   db: D1Database,
   now: number,
+  opts: { trace?: Trace } = {},
 ): Promise<PublicHomepageResponse> {
+  const trace = opts.trace;
   const includeHiddenMonitors = false;
-  const settingsPromise = readPublicSiteSettings(db);
+  const settingsPromise = withTraceAsync(trace, 'homepage_settings', async () =>
+    await readPublicSiteSettings(db),
+  );
 
   const [
     settings,
@@ -921,38 +977,62 @@ export async function computePublicHomepagePayload(
     historyPreviews,
   ] = await Promise.all([
     settingsPromise,
-    settingsPromise.then((settings) =>
-      buildHomepageMonitorData(db, now, includeHiddenMonitors, {
-        uptimeRatingLevel: settings.uptime_rating_level,
-      }),
+    withTraceAsync(trace, 'homepage_monitor_data', async () =>
+      await settingsPromise.then((resolvedSettings) =>
+        buildHomepageMonitorData(db, now, includeHiddenMonitors, {
+          uptimeRatingLevel: resolvedSettings.uptime_rating_level,
+          ...(trace ? { trace } : {}),
+        }),
+      ),
     ),
-    listVisibleActiveIncidents(db, includeHiddenMonitors),
-    listVisibleMaintenanceWindows(db, now, includeHiddenMonitors),
-    readHomepageHistoryPreviews(db, now),
+    withTraceAsync(trace, 'homepage_active_incidents', async () =>
+      await listVisibleActiveIncidents(db, includeHiddenMonitors),
+    ),
+    withTraceAsync(trace, 'homepage_maintenance_windows', async () =>
+      await listVisibleMaintenanceWindows(db, now, includeHiddenMonitors),
+    ),
+    withTraceAsync(trace, 'homepage_history_previews', async () =>
+      await readHomepageHistoryPreviews(db, now, trace),
+    ),
   ]);
 
-  const activeIncidentSummaries = new Array<IncidentSummary>(activeIncidents.length);
-  for (let index = 0; index < activeIncidents.length; index += 1) {
-    const incident = activeIncidents[index];
-    if (!incident) continue;
-    activeIncidentSummaries[index] = toIncidentSummary(incident.row);
-  }
+  const activeIncidentSummaries = withTraceSync(trace, 'homepage_present_incidents', () => {
+    const summaries = new Array<IncidentSummary>(activeIncidents.length);
+    for (let index = 0; index < activeIncidents.length; index += 1) {
+      const incident = activeIncidents[index];
+      if (!incident) continue;
+      summaries[index] = toIncidentSummary(incident.row);
+    }
+    return summaries;
+  });
 
-  const activeMaintenancePreview = new Array<MaintenancePreview>(maintenanceWindows.active.length);
-  for (let index = 0; index < maintenanceWindows.active.length; index += 1) {
-    const window = maintenanceWindows.active[index];
-    if (!window) continue;
-    activeMaintenancePreview[index] = toMaintenancePreview(window.row, window.monitorIds);
-  }
-
-  const upcomingMaintenancePreview = new Array<MaintenancePreview>(
-    maintenanceWindows.upcoming.length,
+  const activeMaintenancePreview = withTraceSync(
+    trace,
+    'homepage_present_active_maintenance',
+    () => {
+      const preview = new Array<MaintenancePreview>(maintenanceWindows.active.length);
+      for (let index = 0; index < maintenanceWindows.active.length; index += 1) {
+        const window = maintenanceWindows.active[index];
+        if (!window) continue;
+        preview[index] = toMaintenancePreview(window.row, window.monitorIds);
+      }
+      return preview;
+    },
   );
-  for (let index = 0; index < maintenanceWindows.upcoming.length; index += 1) {
-    const window = maintenanceWindows.upcoming[index];
-    if (!window) continue;
-    upcomingMaintenancePreview[index] = toMaintenancePreview(window.row, window.monitorIds);
-  }
+
+  const upcomingMaintenancePreview = withTraceSync(
+    trace,
+    'homepage_present_upcoming_maintenance',
+    () => {
+      const preview = new Array<MaintenancePreview>(maintenanceWindows.upcoming.length);
+      for (let index = 0; index < maintenanceWindows.upcoming.length; index += 1) {
+        const window = maintenanceWindows.upcoming[index];
+        if (!window) continue;
+        preview[index] = toMaintenancePreview(window.row, window.monitorIds);
+      }
+      return preview;
+    },
+  );
 
   return {
     generated_at: now,

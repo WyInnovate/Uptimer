@@ -1,4 +1,5 @@
 import { AppError } from '../middleware/errors';
+import type { Trace } from '../observability/trace';
 import { acquireLease } from '../scheduler/lock';
 import {
   publicHomepageResponseSchema,
@@ -37,6 +38,18 @@ export type PublicHomepageRenderArtifact = {
 
 const readSnapshotStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
 const upsertSnapshotStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
+
+function withTraceSync<T>(trace: Trace | undefined, name: string, fn: () => T): T {
+  return trace ? trace.time(name, fn) : fn();
+}
+
+async function withTraceAsync<T>(
+  trace: Trace | undefined,
+  name: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return trace ? trace.timeAsync(name, fn) : await fn();
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -731,38 +744,54 @@ export async function writeHomepageSnapshot(
   db: D1Database,
   now: number,
   payload: PublicHomepageResponse,
+  trace?: Trace,
 ): Promise<void> {
-  const render = buildHomepageRenderArtifact(payload);
-  const dataBodyJson = JSON.stringify(payload);
-  const renderBodyJson = JSON.stringify(render);
+  const render = withTraceSync(trace, 'homepage_write_render', () =>
+    buildHomepageRenderArtifact(payload),
+  );
+  const dataBodyJson = withTraceSync(trace, 'homepage_write_stringify_data', () =>
+    JSON.stringify(payload),
+  );
+  const renderBodyJson = withTraceSync(trace, 'homepage_write_stringify_artifact', () =>
+    JSON.stringify(render),
+  );
 
-  await db.batch([
-    homepageSnapshotUpsertStatement(db, SNAPSHOT_KEY, payload.generated_at, dataBodyJson, now),
-    homepageSnapshotUpsertStatement(
-      db,
-      SNAPSHOT_ARTIFACT_KEY,
-      render.generated_at,
-      renderBodyJson,
-      now,
-    ),
-  ]);
+  await withTraceAsync(trace, 'homepage_write_batch', async () =>
+    await db.batch([
+      homepageSnapshotUpsertStatement(db, SNAPSHOT_KEY, payload.generated_at, dataBodyJson, now),
+      homepageSnapshotUpsertStatement(
+        db,
+        SNAPSHOT_ARTIFACT_KEY,
+        render.generated_at,
+        renderBodyJson,
+        now,
+      ),
+    ]),
+  );
 }
 
 export async function writeHomepageArtifactSnapshot(
   db: D1Database,
   now: number,
   payload: PublicHomepageResponse,
+  trace?: Trace,
 ): Promise<void> {
-  const render = buildHomepageRenderArtifact(payload);
-  const renderBodyJson = JSON.stringify(render);
+  const render = withTraceSync(trace, 'homepage_artifact_write_render', () =>
+    buildHomepageRenderArtifact(payload),
+  );
+  const renderBodyJson = withTraceSync(trace, 'homepage_artifact_write_stringify', () =>
+    JSON.stringify(render),
+  );
 
-  await homepageSnapshotUpsertStatement(
-    db,
-    SNAPSHOT_ARTIFACT_KEY,
-    render.generated_at,
-    renderBodyJson,
-    now,
-  ).run();
+  await withTraceAsync(trace, 'homepage_artifact_write_run', async () =>
+    await homepageSnapshotUpsertStatement(
+      db,
+      SNAPSHOT_ARTIFACT_KEY,
+      render.generated_at,
+      renderBodyJson,
+      now,
+    ).run(),
+  );
 }
 
 export function applyHomepageCacheHeaders(res: Response, ageSeconds: number): void {
@@ -788,41 +817,68 @@ export async function refreshPublicHomepageSnapshot(opts: {
   db: D1Database;
   now: number;
   compute: () => Promise<unknown>;
+  trace?: Trace;
 }): Promise<void> {
-  const payload = toHomepageSnapshotPayload(await opts.compute());
-  await writeHomepageSnapshot(opts.db, opts.now, payload);
+  const computed = await withTraceAsync(opts.trace, 'homepage_refresh_compute', async () =>
+    await opts.compute(),
+  );
+  const payload = withTraceSync(opts.trace, 'homepage_refresh_validate', () =>
+    toHomepageSnapshotPayload(computed),
+  );
+  await writeHomepageSnapshot(opts.db, opts.now, payload, opts.trace);
 }
 
 export async function refreshPublicHomepageArtifactSnapshot(opts: {
   db: D1Database;
   now: number;
   compute: () => Promise<unknown>;
+  trace?: Trace;
 }): Promise<void> {
-  const payload = toHomepageSnapshotPayload(await opts.compute());
-  await writeHomepageArtifactSnapshot(opts.db, opts.now, payload);
+  const computed = await withTraceAsync(
+    opts.trace,
+    'homepage_artifact_refresh_compute',
+    async () => await opts.compute(),
+  );
+  const payload = withTraceSync(opts.trace, 'homepage_artifact_refresh_validate', () =>
+    toHomepageSnapshotPayload(computed),
+  );
+  await writeHomepageArtifactSnapshot(opts.db, opts.now, payload, opts.trace);
 }
 
 export async function refreshPublicHomepageSnapshotIfNeeded(opts: {
   db: D1Database;
   now: number;
   compute: () => Promise<unknown>;
+  trace?: Trace;
 }): Promise<boolean> {
-  const generatedAt = await readHomepageSnapshotGeneratedAt(opts.db);
+  const generatedAt = await withTraceAsync(
+    opts.trace,
+    'homepage_refresh_read_generated_at_1',
+    async () => await readHomepageSnapshotGeneratedAt(opts.db),
+  );
   if (generatedAt !== null && isSameMinute(generatedAt, opts.now)) {
     return false;
   }
 
-  const acquired = await acquireLease(opts.db, REFRESH_LOCK_NAME, opts.now, 55);
+  const acquired = await withTraceAsync(opts.trace, 'homepage_refresh_lease', async () =>
+    await acquireLease(opts.db, REFRESH_LOCK_NAME, opts.now, 55),
+  );
   if (!acquired) {
     return false;
   }
 
-  const latestGeneratedAt = await readHomepageSnapshotGeneratedAt(opts.db);
+  const latestGeneratedAt = await withTraceAsync(
+    opts.trace,
+    'homepage_refresh_read_generated_at_2',
+    async () => await readHomepageSnapshotGeneratedAt(opts.db),
+  );
   if (latestGeneratedAt !== null && isSameMinute(latestGeneratedAt, opts.now)) {
     return false;
   }
 
-  await refreshPublicHomepageSnapshot(opts);
+  await withTraceAsync(opts.trace, 'homepage_refresh_write', async () =>
+    await refreshPublicHomepageSnapshot(opts),
+  );
   return true;
 }
 
@@ -830,22 +886,35 @@ export async function refreshPublicHomepageArtifactSnapshotIfNeeded(opts: {
   db: D1Database;
   now: number;
   compute: () => Promise<unknown>;
+  trace?: Trace;
 }): Promise<boolean> {
-  const generatedAt = await readHomepageArtifactSnapshotGeneratedAt(opts.db);
+  const generatedAt = await withTraceAsync(
+    opts.trace,
+    'homepage_artifact_refresh_read_generated_at_1',
+    async () => await readHomepageArtifactSnapshotGeneratedAt(opts.db),
+  );
   if (generatedAt !== null && isSameMinute(generatedAt, opts.now)) {
     return false;
   }
 
-  const acquired = await acquireLease(opts.db, REFRESH_LOCK_NAME, opts.now, 55);
+  const acquired = await withTraceAsync(opts.trace, 'homepage_artifact_refresh_lease', async () =>
+    await acquireLease(opts.db, REFRESH_LOCK_NAME, opts.now, 55),
+  );
   if (!acquired) {
     return false;
   }
 
-  const latestGeneratedAt = await readHomepageArtifactSnapshotGeneratedAt(opts.db);
+  const latestGeneratedAt = await withTraceAsync(
+    opts.trace,
+    'homepage_artifact_refresh_read_generated_at_2',
+    async () => await readHomepageArtifactSnapshotGeneratedAt(opts.db),
+  );
   if (latestGeneratedAt !== null && isSameMinute(latestGeneratedAt, opts.now)) {
     return false;
   }
 
-  await refreshPublicHomepageArtifactSnapshot(opts);
+  await withTraceAsync(opts.trace, 'homepage_artifact_refresh_write', async () =>
+    await refreshPublicHomepageArtifactSnapshot(opts),
+  );
   return true;
 }

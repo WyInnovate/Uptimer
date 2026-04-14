@@ -21,6 +21,14 @@ import {
 import { runTcpCheck } from '../monitor/tcp';
 import type { CheckOutcome } from '../monitor/types';
 import { dispatchWebhookToChannels, type WebhookChannel } from '../notify/webhook';
+import {
+  TRACE_HEADER,
+  TRACE_ID_HEADER,
+  TRACE_INFO_HEADER,
+  TRACE_MODE_HEADER,
+  TRACE_TOKEN_HEADER,
+  Trace,
+} from '../observability/trace';
 import { readSettings } from '../settings';
 import { acquireLease } from './lock';
 
@@ -33,30 +41,6 @@ const PERSIST_BATCH_SIZE = 25;
 // Look back a bit so maintenance start/end notifications are not missed if a tick is delayed.
 const MAINTENANCE_EVENT_LOOKBACK_SECONDS = 10 * 60;
 
-async function refreshHomepageSnapshotViaService(env: Env): Promise<void> {
-  if (!env.SELF) {
-    throw new Error('SELF service binding missing');
-  }
-  if (!env.ADMIN_TOKEN) {
-    throw new Error('ADMIN_TOKEN missing');
-  }
-
-  const res = await env.SELF.fetch(
-    new Request('http://internal/api/v1/internal/refresh/homepage', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-      },
-      body: env.ADMIN_TOKEN,
-    }),
-  );
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`service refresh failed: HTTP ${res.status} ${text}`.trim());
-  }
-}
-
 async function refreshHomepageSnapshotInline(env: Env, now: number): Promise<void> {
   const [{ computePublicHomepagePayload }, { refreshPublicHomepageSnapshot }] = await Promise.all([
     import('../public/homepage'),
@@ -68,6 +52,75 @@ async function refreshHomepageSnapshotInline(env: Env, now: number): Promise<voi
     now,
     compute: () => computePublicHomepagePayload(env.DB, now),
   });
+}
+
+type HomepageRefreshServiceResult = {
+  status: number;
+  ok: boolean;
+  traceId: string | null;
+  traceInfo: string | null;
+  serverTiming: string | null;
+  refreshed: boolean | null;
+  bodyText: string;
+};
+
+function readTraceToken(env: Env): string | null {
+  const raw = env.UPTIMER_TRACE_TOKEN ?? env.TRACE_TOKEN;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+async function refreshHomepageSnapshotViaServiceWithTrace(
+  env: Env,
+  traceId: string,
+): Promise<HomepageRefreshServiceResult> {
+  if (!env.SELF) {
+    throw new Error('SELF service binding missing');
+  }
+  if (!env.ADMIN_TOKEN) {
+    throw new Error('ADMIN_TOKEN missing');
+  }
+
+  const headers = new Headers({
+    'Content-Type': 'text/plain; charset=utf-8',
+    [TRACE_HEADER]: '1',
+    [TRACE_ID_HEADER]: traceId,
+    [TRACE_MODE_HEADER]: 'scheduled-refresh',
+  });
+  const traceToken = readTraceToken(env);
+  if (traceToken) {
+    headers.set(TRACE_TOKEN_HEADER, traceToken);
+  }
+
+  const res = await env.SELF.fetch(
+    new Request('http://internal/api/v1/internal/refresh/homepage', {
+      method: 'POST',
+      headers,
+      body: env.ADMIN_TOKEN,
+    }),
+  );
+
+  const bodyText = await res.text().catch(() => '');
+  let refreshed: boolean | null = null;
+  if (bodyText) {
+    try {
+      const parsed = JSON.parse(bodyText) as { refreshed?: unknown };
+      refreshed = typeof parsed.refreshed === 'boolean' ? parsed.refreshed : null;
+    } catch {
+      refreshed = null;
+    }
+  }
+
+  return {
+    status: res.status,
+    ok: res.ok,
+    traceId: res.headers.get(TRACE_ID_HEADER),
+    traceInfo: res.headers.get(TRACE_INFO_HEADER),
+    serverTiming: res.headers.get('Server-Timing'),
+    refreshed,
+    bodyText,
+  };
 }
 
 type CachedMonitorHttpJson = {
@@ -704,28 +757,53 @@ function queueMonitorNotification(
 export async function runScheduledTick(env: Env, ctx: ExecutionContext): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   const checkedAt = Math.floor(now / 60) * 60;
+  const trace = new Trace({
+    enabled: true,
+    id: `scheduled-${checkedAt}-${crypto.randomUUID()}`,
+    mode: 'scheduled',
+  });
+  trace.setLabel('route', 'scheduled/tick');
+  trace.setLabel('checked_at', checkedAt);
   const queueHomepageRefresh = () =>
     env.SELF
-      ? refreshHomepageSnapshotViaService(env).catch(async (err) => {
-          console.warn('homepage snapshot: service refresh failed', err);
-          await refreshHomepageSnapshotInline(env, now).catch((fallbackErr) => {
-            console.warn('homepage snapshot: refresh failed', fallbackErr);
-          });
-        })
+      ? refreshHomepageSnapshotViaServiceWithTrace(env, `${trace.id}-refresh`)
+          .then((result) => {
+            console.log(
+              `scheduled:homepage-refresh status=${result.status} ok=${result.ok} refreshed=${result.refreshed ?? 'null'} traceId=${result.traceId ?? ''} timing=${result.serverTiming ?? ''} info=${result.traceInfo ?? ''}`,
+            );
+            if (!result.ok) {
+              throw new Error(
+                `service refresh failed: HTTP ${result.status} ${result.bodyText}`.trim(),
+              );
+            }
+          })
+          .catch(async (err) => {
+            console.warn('homepage snapshot: service refresh failed', err);
+            await refreshHomepageSnapshotInline(env, now).catch((fallbackErr) => {
+              console.warn('homepage snapshot: refresh failed', fallbackErr);
+            });
+          })
       : refreshHomepageSnapshotInline(env, now).catch((err) => {
           console.warn('homepage snapshot: refresh failed', err);
         });
 
-  const acquired = await acquireLease(env.DB, LOCK_NAME, now, LOCK_LEASE_SECONDS);
+  const acquired = await trace.timeAsync('lease', async () =>
+    await acquireLease(env.DB, LOCK_NAME, now, LOCK_LEASE_SECONDS),
+  );
   if (!acquired) {
+    trace.setLabel('lock', 'miss');
+    trace.finish('total');
+    console.log(`scheduled:trace id=${trace.id} timing=${trace.toServerTiming('s')} info=${trace.toInfoHeader()}`);
     return;
   }
 
   const [channels, settings, due] = await Promise.all([
-    listActiveWebhookChannels(env.DB),
-    readSettings(env.DB),
-    listDueMonitors(env.DB, checkedAt),
+    trace.timeAsync('channels', async () => await listActiveWebhookChannels(env.DB)),
+    trace.timeAsync('settings', async () => await readSettings(env.DB)),
+    trace.timeAsync('due_monitors', async () => await listDueMonitors(env.DB, checkedAt)),
   ]);
+  trace.setLabel('channels', channels.length);
+  trace.setLabel('due', due.length);
 
   const notify: NotifyContext | null =
     channels.length === 0
@@ -740,72 +818,79 @@ export async function runScheduledTick(env: Env, ctx: ExecutionContext): Promise
   // Emit maintenance start/end notifications. This is best-effort and uses the existing
   // notification_deliveries idempotency key to avoid duplicates.
   if (notify) {
-    const lookbackStart = Math.max(0, now - MAINTENANCE_EVENT_LOOKBACK_SECONDS);
+    await trace.timeAsync('maintenance_notify', async () => {
+      const lookbackStart = Math.max(0, now - MAINTENANCE_EVENT_LOOKBACK_SECONDS);
 
-    const [started, ended] = await Promise.all([
-      listMaintenanceWindowsStartedBetween(env.DB, lookbackStart, now),
-      listMaintenanceWindowsEndedBetween(env.DB, lookbackStart, now),
-    ]);
+      const [started, ended] = await Promise.all([
+        listMaintenanceWindowsStartedBetween(env.DB, lookbackStart, now),
+        listMaintenanceWindowsEndedBetween(env.DB, lookbackStart, now),
+      ]);
 
-    const windowIds = [...new Set([...started.map((w) => w.id), ...ended.map((w) => w.id)])];
-    const monitorIdsByWindowId = await listMaintenanceWindowMonitorIdsByWindowId(env.DB, windowIds);
-
-    for (const w of started) {
-      const channelsForEvent = notify.channels.filter((c) => c.created_at <= w.starts_at);
-      if (channelsForEvent.length === 0) continue;
-
-      const eventType = 'maintenance.started';
-      const eventKey = `maintenance:${w.id}:started:${w.starts_at}`;
-      const payload = {
-        event: eventType,
-        event_id: eventKey,
-        timestamp: w.starts_at,
-        maintenance: maintenanceWindowRowToPayload(w, monitorIdsByWindowId.get(w.id) ?? []),
-      };
-
-      notify.ctx.waitUntil(
-        dispatchWebhookToChannels({
-          db: env.DB,
-          env: notify.envRecord,
-          channels: channelsForEvent,
-          eventType,
-          eventKey,
-          payload,
-        }).catch((err) => {
-          console.error('notify: failed to dispatch maintenance.started', err);
-        }),
+      const windowIds = [...new Set([...started.map((w) => w.id), ...ended.map((w) => w.id)])];
+      const monitorIdsByWindowId = await listMaintenanceWindowMonitorIdsByWindowId(
+        env.DB,
+        windowIds,
       );
-    }
 
-    for (const w of ended) {
-      const channelsForEvent = notify.channels.filter((c) => c.created_at <= w.ends_at);
-      if (channelsForEvent.length === 0) continue;
+      for (const w of started) {
+        const channelsForEvent = notify.channels.filter((c) => c.created_at <= w.starts_at);
+        if (channelsForEvent.length === 0) continue;
 
-      const eventType = 'maintenance.ended';
-      const eventKey = `maintenance:${w.id}:ended:${w.ends_at}`;
-      const payload = {
-        event: eventType,
-        event_id: eventKey,
-        timestamp: w.ends_at,
-        maintenance: maintenanceWindowRowToPayload(w, monitorIdsByWindowId.get(w.id) ?? []),
-      };
+        const eventType = 'maintenance.started';
+        const eventKey = `maintenance:${w.id}:started:${w.starts_at}`;
+        const payload = {
+          event: eventType,
+          event_id: eventKey,
+          timestamp: w.starts_at,
+          maintenance: maintenanceWindowRowToPayload(w, monitorIdsByWindowId.get(w.id) ?? []),
+        };
 
-      notify.ctx.waitUntil(
-        dispatchWebhookToChannels({
-          db: env.DB,
-          env: notify.envRecord,
-          channels: channelsForEvent,
-          eventType,
-          eventKey,
-          payload,
-        }).catch((err) => {
-          console.error('notify: failed to dispatch maintenance.ended', err);
-        }),
-      );
-    }
+        notify.ctx.waitUntil(
+          dispatchWebhookToChannels({
+            db: env.DB,
+            env: notify.envRecord,
+            channels: channelsForEvent,
+            eventType,
+            eventKey,
+            payload,
+          }).catch((err) => {
+            console.error('notify: failed to dispatch maintenance.started', err);
+          }),
+        );
+      }
+
+      for (const w of ended) {
+        const channelsForEvent = notify.channels.filter((c) => c.created_at <= w.ends_at);
+        if (channelsForEvent.length === 0) continue;
+
+        const eventType = 'maintenance.ended';
+        const eventKey = `maintenance:${w.id}:ended:${w.ends_at}`;
+        const payload = {
+          event: eventType,
+          event_id: eventKey,
+          timestamp: w.ends_at,
+          maintenance: maintenanceWindowRowToPayload(w, monitorIdsByWindowId.get(w.id) ?? []),
+        };
+
+        notify.ctx.waitUntil(
+          dispatchWebhookToChannels({
+            db: env.DB,
+            env: notify.envRecord,
+            channels: channelsForEvent,
+            eventType,
+            eventKey,
+            payload,
+          }).catch((err) => {
+            console.error('notify: failed to dispatch maintenance.ended', err);
+          }),
+        );
+      }
+    });
   }
 
   if (due.length === 0) {
+    trace.finish('total');
+    console.log(`scheduled:trace id=${trace.id} timing=${trace.toServerTiming('s')} info=${trace.toInfoHeader()}`);
     ctx.waitUntil(queueHomepageRefresh());
     return;
   }
@@ -815,17 +900,22 @@ export async function runScheduledTick(env: Env, ctx: ExecutionContext): Promise
   const suppressedMonitorIds =
     notify === null
       ? new Set<number>()
-      : await listMaintenanceSuppressedMonitorIds(env.DB, now, dueMonitorIds);
+      : await trace.timeAsync('suppression_query', async () =>
+          await listMaintenanceSuppressedMonitorIds(env.DB, now, dueMonitorIds),
+        );
+  trace.setLabel('suppressed', suppressedMonitorIds.size);
 
   const limit = pLimit(CHECK_CONCURRENCY);
-  const settled = await Promise.allSettled(
-    due.map((m) =>
-      limit(() =>
-        runDueMonitor(
-          m,
-          checkedAt,
-          suppressedMonitorIds.has(m.id),
-          stateMachineConfig,
+  const settled = await trace.timeAsync('checks', async () =>
+    await Promise.allSettled(
+      due.map((m) =>
+        limit(() =>
+          runDueMonitor(
+            m,
+            checkedAt,
+            suppressedMonitorIds.has(m.id),
+            stateMachineConfig,
+          ),
         ),
       ),
     ),
@@ -837,11 +927,13 @@ export async function runScheduledTick(env: Env, ctx: ExecutionContext): Promise
     .map((r) => r.value);
 
   if (completed.length > 0) {
-    await persistCompletedMonitors(env.DB, completed);
+    await trace.timeAsync('persist', async () => await persistCompletedMonitors(env.DB, completed));
 
-    for (const monitor of completed) {
-      queueMonitorNotification(env, notify, monitor);
-    }
+    trace.time('queue_monitor_notify', () => {
+      for (const monitor of completed) {
+        queueMonitorNotification(env, notify, monitor);
+      }
+    });
   }
 
   let httpCount = 0;
@@ -864,6 +956,13 @@ export async function runScheduledTick(env: Env, ctx: ExecutionContext): Promise
       tcpCount += 1;
     }
   }
+  trace.setLabel('http', httpCount);
+  trace.setLabel('tcp', tcpCount);
+  trace.setLabel('attempts', attemptTotal);
+  trace.setLabel('down', downCount);
+  trace.setLabel('unknown', unknownCount);
+  trace.setLabel('rejected', rejected.length);
+  trace.finish('total');
 
   if (rejected.length > 0) {
     console.error(
@@ -875,6 +974,7 @@ export async function runScheduledTick(env: Env, ctx: ExecutionContext): Promise
       `scheduled: processed ${settled.length} monitors at ${checkedAt} attempts=${attemptTotal} http=${httpCount} tcp=${tcpCount} assertions=${assertionCount} down=${downCount} unknown=${unknownCount}`,
     );
   }
+  console.log(`scheduled:trace id=${trace.id} timing=${trace.toServerTiming('s')} info=${trace.toInfoHeader()}`);
 
   ctx.waitUntil(queueHomepageRefresh());
 }
