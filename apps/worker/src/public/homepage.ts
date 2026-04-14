@@ -439,7 +439,9 @@ async function buildHomepageMonitorCardsFromRows(
   const selectedIds = rows.map((monitor) => monitor.id);
   const placeholders = buildNumberedPlaceholders(selectedIds.length);
   const todayStartAt = utcDayStart(now);
-  const needsToday = rangeEnd > rangeEndFullDays && todayStartAt >= rangeStart;
+  // Always compute a partial "today" bucket whenever we're inside the current UTC day.
+  // This avoids missing uptime strips / 30d uptime immediately after a fresh deployment.
+  const needsToday = rangeEnd > rangeEndFullDays;
   const monitors = rows.map((row) => toHomepageMonitorCard(row, now, maintenanceMonitorIds));
   const monitorIndexById = new Map<number, number>();
   for (let index = 0; index < monitors.length; index += 1) {
