@@ -33,14 +33,37 @@ const PERSIST_BATCH_SIZE = 25;
 // Look back a bit so maintenance start/end notifications are not missed if a tick is delayed.
 const MAINTENANCE_EVENT_LOOKBACK_SECONDS = 10 * 60;
 
+async function refreshHomepageSnapshotViaService(env: Env): Promise<void> {
+  if (!env.SELF) {
+    throw new Error('SELF service binding missing');
+  }
+  if (!env.ADMIN_TOKEN) {
+    throw new Error('ADMIN_TOKEN missing');
+  }
+
+  const res = await env.SELF.fetch(
+    new Request('http://internal/api/v1/internal/refresh/homepage', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+      },
+      body: env.ADMIN_TOKEN,
+    }),
+  );
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`service refresh failed: HTTP ${res.status} ${text}`.trim());
+  }
+}
+
 async function refreshHomepageSnapshotInline(env: Env, now: number): Promise<void> {
-  const [{ computePublicHomepagePayload }, { refreshPublicHomepageSnapshotIfNeeded }] =
-    await Promise.all([
+  const [{ computePublicHomepagePayload }, { refreshPublicHomepageSnapshot }] = await Promise.all([
     import('../public/homepage'),
-    import('../snapshots/public-homepage'),
+    import('../snapshots'),
   ]);
 
-  await refreshPublicHomepageSnapshotIfNeeded({
+  await refreshPublicHomepageSnapshot({
     db: env.DB,
     now,
     compute: () => computePublicHomepagePayload(env.DB, now),
@@ -682,9 +705,16 @@ export async function runScheduledTick(env: Env, ctx: ExecutionContext): Promise
   const now = Math.floor(Date.now() / 1000);
   const checkedAt = Math.floor(now / 60) * 60;
   const queueHomepageRefresh = () =>
-    refreshHomepageSnapshotInline(env, now).catch((err) => {
-      console.warn('homepage snapshot: refresh failed', err);
-    });
+    env.SELF
+      ? refreshHomepageSnapshotViaService(env).catch(async (err) => {
+          console.warn('homepage snapshot: service refresh failed', err);
+          await refreshHomepageSnapshotInline(env, now).catch((fallbackErr) => {
+            console.warn('homepage snapshot: refresh failed', fallbackErr);
+          });
+        })
+      : refreshHomepageSnapshotInline(env, now).catch((err) => {
+          console.warn('homepage snapshot: refresh failed', err);
+        });
 
   const acquired = await acquireLease(env.DB, LOCK_NAME, now, LOCK_LEASE_SECONDS);
   if (!acquired) {
