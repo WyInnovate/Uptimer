@@ -49,21 +49,21 @@ type HomepageMonitorRow = {
   last_checked_at: number | null;
 };
 
-type HomepageHeartbeatRow = {
-  monitor_id: number;
-  checked_at: number;
-  status: string;
-  latency_ms: number | null;
-};
+type HomepageHeartbeatRawRow = [
+  monitor_id: number,
+  checked_at: number,
+  status: string,
+  latency_ms: number | null,
+];
 
-type HomepageRollupRow = {
-  monitor_id: number;
-  day_start_at: number;
-  total_sec: number;
-  downtime_sec: number;
-  unknown_sec: number;
-  uptime_sec: number;
-};
+type HomepageRollupRawRow = [
+  monitor_id: number,
+  day_start_at: number,
+  total_sec: number | null,
+  downtime_sec: number | null,
+  unknown_sec: number | null,
+  uptime_sec: number | null,
+];
 
 type HomepageMonitorDataOptions = {
   cardLimit?: number;
@@ -473,8 +473,8 @@ async function buildHomepageMonitorCardsFromRows(
     `,
     )
     .bind(...selectedIds, HEARTBEAT_POINTS)
-    .all<HomepageHeartbeatRow>()
-    .then(({ results }) => results ?? []);
+    .raw<HomepageHeartbeatRawRow>()
+    .then((rows) => rows ?? []);
 
   const rollupRowsPromise = db
     .prepare(
@@ -488,8 +488,8 @@ async function buildHomepageMonitorCardsFromRows(
     `,
     )
     .bind(...selectedIds, rangeStart, rangeEndFullDays)
-    .all<HomepageRollupRow>()
-    .then(({ results }) => results ?? []);
+    .raw<HomepageRollupRawRow>()
+    .then((rows) => rows ?? []);
 
   const todayByMonitorIdPromise: Promise<Map<number, UptimeWindowTotals>> = needsToday
     ? computeTodayPartialUptimeBatch(
@@ -513,16 +513,16 @@ async function buildHomepageMonitorCardsFromRows(
 
   const heartbeatStatusCodes = Array.from({ length: monitors.length }, () => [] as string[]);
   for (const row of heartbeatRows) {
-    const index = monitorIndexById.get(row.monitor_id);
+    const index = monitorIndexById.get(row[0]);
     if (index === undefined) continue;
 
     const monitor = monitors[index];
     const statusCodes = heartbeatStatusCodes[index];
     if (!monitor || !statusCodes) continue;
 
-    monitor.heartbeat_strip.checked_at.push(row.checked_at);
-    monitor.heartbeat_strip.latency_ms.push(row.latency_ms);
-    statusCodes.push(toHeartbeatStatusCode(row.status));
+    monitor.heartbeat_strip.checked_at.push(row[1]);
+    monitor.heartbeat_strip.latency_ms.push(row[3]);
+    statusCodes.push(toHeartbeatStatusCode(row[2]));
   }
 
   const totalsByMonitor = Array.from({ length: monitors.length }, () => ({
@@ -530,19 +530,19 @@ async function buildHomepageMonitorCardsFromRows(
     uptimeSec: 0,
   }));
   for (const row of rollupRows) {
-    const index = monitorIndexById.get(row.monitor_id);
+    const index = monitorIndexById.get(row[0]);
     if (index === undefined) continue;
 
     const monitor = monitors[index];
     const totals = totalsByMonitor[index];
     if (!monitor || !totals) continue;
 
-    addUptimeDay(monitor, totals, row.day_start_at, {
-      total_sec: row.total_sec ?? 0,
-      downtime_sec: row.downtime_sec ?? 0,
-      unknown_sec: row.unknown_sec ?? 0,
-      uptime_sec: row.uptime_sec ?? 0,
-      uptime_pct: toUptimePct(row.total_sec ?? 0, row.uptime_sec ?? 0),
+    addUptimeDay(monitor, totals, row[1], {
+      total_sec: row[2] ?? 0,
+      downtime_sec: row[3] ?? 0,
+      unknown_sec: row[4] ?? 0,
+      uptime_sec: row[5] ?? 0,
+      uptime_pct: toUptimePct(row[2] ?? 0, row[5] ?? 0),
     });
   }
 
