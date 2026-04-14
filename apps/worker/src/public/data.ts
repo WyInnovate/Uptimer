@@ -486,7 +486,7 @@ async function computeTodayPartialUptimeBatchSql(
           i.monitor_id AS monitor_id,
           i.interval_sec AS interval_sec,
           CASE
-            WHEN i.created_at > ?1 THEN
+            WHEN i.created_at >= ?1 THEN
               COALESCE(
                 fc.first_check_at,
                 CASE WHEN i.last_checked_at IS NULL THEN NULL ELSE i.created_at END
@@ -791,13 +791,13 @@ async function computeTodayPartialUptimeBatchLegacy(
 
     const monitorRangeStart = Math.max(rangeStart, monitor.created_at);
     const checks = checksById.get(id) ?? [];
-    const checksSinceMonitorStart =
-      monitorRangeStart > rangeStart
-        ? checks.filter((check) => check.checked_at >= monitorRangeStart)
-        : checks;
+    const isNewWithinRange = monitor.created_at >= rangeStart;
+    const checksSinceMonitorStart = isNewWithinRange
+      ? checks.filter((check) => check.checked_at >= monitorRangeStart)
+      : checks;
     let effectiveRangeStart: number | null = monitorRangeStart;
 
-    if (monitorRangeStart > rangeStart) {
+    if (isNewWithinRange) {
       const firstCheckAt = checksSinceMonitorStart[0]?.checked_at;
       effectiveRangeStart =
         firstCheckAt ?? (monitor.last_checked_at === null ? null : monitorRangeStart);
@@ -960,7 +960,10 @@ export async function buildPublicMonitorCards(
   if (ids.length > 0) {
     const placeholders = ids.map((_, idx) => `?${idx + 1}`).join(', ');
     const todayStartAt = utcDayStart(now);
-    const needsToday = rangeEnd > rangeEndFullDays && todayStartAt >= rangeStart;
+    // Always compute a partial "today" bucket whenever we're inside the current UTC day.
+    // This keeps new deployments (where rangeStart may be after today's 00:00) from
+    // showing empty uptime strips until the next daily rollup.
+    const needsToday = rangeEnd > rangeEndFullDays;
 
     const rollupsPromise = db
       .prepare(

@@ -129,4 +129,84 @@ describe('computePublicHomepagePayload', () => {
     });
     expect(payload.monitors[0]?.uptime_30d?.uptime_pct).toBeCloseTo(99.965, 3);
   });
+
+  it('includes today uptime when all monitors are created after UTC day start', async () => {
+    const dayStart = 1_728_000_000;
+    const now = dayStart + 36_600; // 10h 10m into current UTC day
+    const createdAt = now - 600; // created 10m ago
+
+    const handlers: FakeD1QueryHandler[] = [
+      {
+        match: 'from monitors m',
+        all: () => [
+          {
+            id: 1,
+            name: 'API',
+            type: 'http',
+            group_name: null,
+            interval_sec: 60,
+            created_at: createdAt,
+            state_status: 'up',
+            last_checked_at: now - 30,
+          },
+        ],
+      },
+      {
+        match: 'select distinct mwm.monitor_id',
+        all: () => [],
+      },
+      {
+        match: (sql) => sql.startsWith('select key, value from settings'),
+        all: () => [
+          { key: 'site_title', value: 'Status Hub' },
+          { key: 'site_description', value: 'Production services' },
+          { key: 'site_locale', value: 'en' },
+          { key: 'site_timezone', value: 'UTC' },
+          { key: 'uptime_rating_level', value: '4' },
+        ],
+      },
+      {
+        match: 'from incidents',
+        all: () => [],
+      },
+      {
+        match: 'from maintenance_windows',
+        all: () => [],
+      },
+      {
+        match: 'row_number() over',
+        all: () => [
+          {
+            monitor_id: 1,
+            checked_at: now - 120,
+            status: 'up',
+            latency_ms: 42,
+          },
+        ],
+      },
+      {
+        match: 'from monitor_daily_rollups',
+        all: () => [],
+      },
+      {
+        match: 'select monitor_id, started_at, ended_at',
+        all: () => [],
+      },
+      {
+        match: 'select monitor_id, checked_at, status from check_results',
+        all: () => [{ monitor_id: 1, checked_at: now - 120, status: 'up' }],
+      },
+    ];
+
+    const payload = await computePublicHomepagePayload(createFakeD1Database(handlers), now);
+
+    expect(payload.monitors).toHaveLength(1);
+    expect(payload.monitors[0]?.uptime_30d?.uptime_pct).toBeCloseTo(100, 6);
+    expect(payload.monitors[0]?.uptime_day_strip).toMatchObject({
+      day_start_at: [dayStart],
+      downtime_sec: [0],
+      unknown_sec: [0],
+      uptime_pct_milli: [100_000],
+    });
+  });
 });
