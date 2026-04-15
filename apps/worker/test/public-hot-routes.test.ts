@@ -48,6 +48,8 @@ function sampleStatusPayload(now = 1_728_000_000) {
 async function requestStatusViaWorker(opts: {
   handlers: FakeD1QueryHandler[];
   origin?: string;
+  method?: string;
+  path?: string;
   waitUntil?: WaitUntil;
 }) {
   const env = {
@@ -58,7 +60,8 @@ async function requestStatusViaWorker(opts: {
   const waitUntil = opts.waitUntil ?? vi.fn();
 
   const res = await worker.fetch(
-    new Request('https://status.example.com/api/v1/public/status', {
+    new Request(`https://status.example.com${opts.path ?? '/api/v1/public/status'}`, {
+      method: opts.method,
       headers: opts.origin ? { Origin: opts.origin } : undefined,
     }),
     env,
@@ -163,5 +166,27 @@ describe('public hot routes', () => {
     expect(computePublicStatusPayload).toHaveBeenCalledOnce();
     expect(pending.length).toBe(0);
   });
-});
 
+  it('rejects non-GET methods on the hot status endpoint', async () => {
+    const { res } = await requestStatusViaWorker({
+      method: 'PATCH',
+      handlers: [],
+    });
+
+    expect(res.status).toBe(405);
+    expect(res.headers.get('Allow')).toBe('GET, OPTIONS');
+    expect(computePublicStatusPayload).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-GET methods on trailing-slash hot status paths', async () => {
+    const { res } = await requestStatusViaWorker({
+      method: 'PATCH',
+      path: '/api/v1/public/status/',
+      handlers: [],
+    });
+
+    expect(res.status).toBe(405);
+    expect(res.headers.get('Allow')).toBe('GET, OPTIONS');
+    expect(computePublicStatusPayload).not.toHaveBeenCalled();
+  });
+});

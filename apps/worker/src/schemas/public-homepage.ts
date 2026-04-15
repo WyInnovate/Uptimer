@@ -117,5 +117,14 @@ export const publicHomepageResponseSchema = z.object({
   maintenance_history_preview: maintenanceWindowPreviewSchema.nullable(),
 });
 
+export const publicHomepageRenderArtifactSchema = z.object({
+  generated_at: z.number().int().nonnegative(),
+  preload_html: z.string(),
+  snapshot: publicHomepageResponseSchema,
+  meta_title: z.string(),
+  meta_description: z.string(),
+});
+
 export type PublicHomepageResponse = z.infer<typeof publicHomepageResponseSchema>;
 export type HomepageMonitorCard = z.infer<typeof homepageMonitorCardSchema>;
+export type PublicHomepageRenderArtifact = z.infer<typeof publicHomepageRenderArtifactSchema>;

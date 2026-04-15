@@ -2,7 +2,9 @@ import { AppError } from '../middleware/errors';
 import type { Trace } from '../observability/trace';
 import { acquireLease } from '../scheduler/lock';
 import {
+  publicHomepageRenderArtifactSchema,
   publicHomepageResponseSchema,
+  type PublicHomepageRenderArtifact,
   type PublicHomepageResponse,
 } from '../schemas/public-homepage';
 
@@ -16,11 +18,6 @@ const READ_SNAPSHOT_SQL = `
   FROM public_snapshots
   WHERE key = ?1
 `;
-const READ_SNAPSHOT_GENERATED_AT_SQL = `
-  SELECT generated_at
-  FROM public_snapshots
-  WHERE key = ?1
-`;
 const UPSERT_SNAPSHOT_SQL = `
   INSERT INTO public_snapshots (key, generated_at, body_json, updated_at)
   VALUES (?1, ?2, ?3, ?4)
@@ -28,21 +25,13 @@ const UPSERT_SNAPSHOT_SQL = `
     generated_at = excluded.generated_at,
     body_json = excluded.body_json,
     updated_at = excluded.updated_at
+  WHERE excluded.generated_at >= public_snapshots.generated_at
 `;
 
 const SPLIT_SNAPSHOT_VERSION = 3;
 const LEGACY_COMBINED_SNAPSHOT_VERSION = 2;
 
-export type PublicHomepageRenderArtifact = {
-  generated_at: number;
-  preload_html: string;
-  snapshot: PublicHomepageResponse;
-  meta_title: string;
-  meta_description: string;
-};
-
 const readSnapshotStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
-const readSnapshotGeneratedAtStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
 const upsertSnapshotStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
 
 function withTraceSync<T>(trace: Trace | undefined, name: string, fn: () => T): T {
@@ -384,86 +373,45 @@ export function buildHomepageRenderArtifact(
   };
 }
 
-function looksLikeHomepagePayload(value: unknown): value is PublicHomepageResponse {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.generated_at === 'number' &&
-    (value.bootstrap_mode === 'full' || value.bootstrap_mode === 'partial') &&
-    typeof value.monitor_count_total === 'number' &&
-    typeof value.site_title === 'string' &&
-    Array.isArray(value.monitors) &&
-    Array.isArray(value.active_incidents) &&
-    isRecord(value.summary) &&
-    isRecord(value.banner) &&
-    isRecord(value.maintenance_windows)
-  );
-}
+function normalizeDirectHomepagePayload(value: unknown): PublicHomepageResponse | null {
+  const directPayload = publicHomepageResponseSchema.safeParse(value);
+  if (directPayload.success) {
+    return directPayload.data;
+  }
 
-function looksLikeHomepageArtifact(value: unknown): value is PublicHomepageRenderArtifact {
-  if (!isRecord(value)) return false;
+  if (!isRecord(value)) return null;
 
-  return (
-    typeof value.generated_at === 'number' &&
-    typeof value.preload_html === 'string' &&
-    typeof value.meta_title === 'string' &&
-    typeof value.meta_description === 'string' &&
-    looksLikeHomepagePayload(value.snapshot)
-  );
-}
-
-function looksLikeSerializedHomepagePayload(text: string): boolean {
-  const trimmed = text.trim();
-  return (
-    trimmed.startsWith('{"generated_at":') &&
-    trimmed.includes('"bootstrap_mode"') &&
-    trimmed.includes('"monitor_count_total"') &&
-    !trimmed.includes('"preload_html":') &&
-    !trimmed.includes('"meta_title":') &&
-    !trimmed.includes('"meta_description":')
-  );
-}
-
-function looksLikeSerializedHomepageArtifact(text: string): boolean {
-  const trimmed = text.trim();
-  return (
-    trimmed.startsWith('{"generated_at":') &&
-    trimmed.includes('"preload_html"') &&
-    trimmed.includes('"meta_title"') &&
-    trimmed.includes('"snapshot"')
-  );
+  const normalizedPayload = publicHomepageResponseSchema.safeParse({
+    ...value,
+    bootstrap_mode:
+      value.bootstrap_mode === 'full' || value.bootstrap_mode === 'partial'
+        ? value.bootstrap_mode
+        : 'full',
+    monitor_count_total: Array.isArray(value.monitors) ? value.monitors.length : 0,
+  });
+  return normalizedPayload.success ? normalizedPayload.data : null;
 }
 
 function readStoredHomepageSnapshotData(value: unknown): PublicHomepageResponse | null {
-  if (looksLikeHomepageArtifact(value)) {
-    return value.snapshot;
+  const artifact = publicHomepageRenderArtifactSchema.safeParse(value);
+  if (artifact.success) {
+    return artifact.data.snapshot;
   }
 
   if (!isRecord(value)) return null;
 
   const version = value.version;
-  if (version === SPLIT_SNAPSHOT_VERSION) {
-    return looksLikeHomepagePayload(value.data) ? value.data : null;
+  if (version === SPLIT_SNAPSHOT_VERSION || version === LEGACY_COMBINED_SNAPSHOT_VERSION) {
+    return normalizeDirectHomepagePayload(value.data);
   }
 
-  if (version === LEGACY_COMBINED_SNAPSHOT_VERSION) {
-    return looksLikeHomepagePayload(value.data) ? value.data : null;
-  }
-
-  const parsed = publicHomepageResponseSchema.safeParse({
-    ...value,
-    bootstrap_mode: 'full',
-    monitor_count_total: Array.isArray(value.monitors) ? value.monitors.length : 0,
-  });
-  if (!parsed.success) {
-    return null;
-  }
-
-  return parsed.data;
+  return normalizeDirectHomepagePayload(value);
 }
 
 function readStoredHomepageSnapshotRender(value: unknown): PublicHomepageRenderArtifact | null {
-  if (looksLikeHomepageArtifact(value)) {
-    return value;
+  const artifact = publicHomepageRenderArtifactSchema.safeParse(value);
+  if (artifact.success) {
+    return artifact.data;
   }
 
   if (!isRecord(value)) return null;
@@ -472,7 +420,8 @@ function readStoredHomepageSnapshotRender(value: unknown): PublicHomepageRenderA
     return null;
   }
 
-  return looksLikeHomepageArtifact(value.render) ? value.render : null;
+  const legacyRender = publicHomepageRenderArtifactSchema.safeParse(value.render);
+  return legacyRender.success ? legacyRender.data : null;
 }
 
 function safeJsonParse(text: string): unknown | null {
@@ -505,28 +454,74 @@ async function readSnapshotRow(
   }
 }
 
-async function readSnapshotGeneratedAt(db: D1Database, key: string): Promise<number | null> {
-  try {
-    const cached = readSnapshotGeneratedAtStatementByDb.get(db);
-    const statement = cached ?? db.prepare(READ_SNAPSHOT_GENERATED_AT_SQL);
-    if (!cached) {
-      readSnapshotGeneratedAtStatementByDb.set(db, statement);
-    }
-
-    const row = await statement.bind(key).first<{ generated_at: number }>();
-    return row?.generated_at ?? null;
-  } catch (err) {
-    console.warn('homepage snapshot: read generated_at failed', err);
-    return null;
-  }
-}
-
 async function readHomepageSnapshotRow(db: D1Database) {
   return readSnapshotRow(db, SNAPSHOT_KEY);
 }
 
 async function readHomepageArtifactSnapshotRow(db: D1Database) {
   return readSnapshotRow(db, SNAPSHOT_ARTIFACT_KEY);
+}
+
+async function readSnapshotRowsByPriority(
+  db: D1Database,
+): Promise<Array<{ generated_at: number; body_json: string }>> {
+  const [artifactRow, homepageRow] = await Promise.all([
+    readHomepageArtifactSnapshotRow(db),
+    readHomepageSnapshotRow(db),
+  ]);
+
+  return [artifactRow, homepageRow].filter(
+    (row): row is { generated_at: number; body_json: string } => row !== null,
+  );
+}
+
+function normalizeHomepagePayloadBodyJson(bodyJson: string): string | null {
+  const parsed = safeJsonParse(bodyJson);
+  if (parsed === null) {
+    return null;
+  }
+
+  const data = readStoredHomepageSnapshotData(parsed);
+  return data ? JSON.stringify(data) : null;
+}
+
+function normalizeHomepageArtifactBodyJson(bodyJson: string): string | null {
+  const parsed = safeJsonParse(bodyJson);
+  if (parsed === null) {
+    return null;
+  }
+
+  const render = readStoredHomepageSnapshotRender(parsed);
+  return render ? JSON.stringify(render) : null;
+}
+
+function readSnapshotValueFromRows<T>(opts: {
+  rows: ReadonlyArray<{ generated_at: number; body_json: string }>;
+  now: number;
+  maxAgeSeconds: number;
+  warning: string;
+  normalize: (bodyJson: string) => T | null;
+}): { value: T; age: number } | null {
+  let freshest: { value: T; age: number } | null = null;
+
+  for (const row of opts.rows) {
+    const age = Math.max(0, opts.now - row.generated_at);
+    if (age > opts.maxAgeSeconds) {
+      continue;
+    }
+
+    const value = opts.normalize(row.body_json);
+    if (value === null) {
+      console.warn(opts.warning);
+      continue;
+    }
+
+    if (freshest === null || row.generated_at > opts.now - freshest.age) {
+      freshest = { value, age };
+    }
+  }
+
+  return freshest;
 }
 
 function isSameMinute(a: number, b: number): boolean {
@@ -549,278 +544,173 @@ export async function readHomepageSnapshot(
   db: D1Database,
   now: number,
 ): Promise<{ data: PublicHomepageResponse; age: number } | null> {
-  const row = (await readHomepageArtifactSnapshotRow(db)) ?? (await readHomepageSnapshotRow(db));
-  if (!row) return null;
-
-  const age = Math.max(0, now - row.generated_at);
-  if (age > MAX_AGE_SECONDS) return null;
-
-  const parsed = safeJsonParse(row.body_json);
-  if (parsed === null) return null;
-
-  const data = readStoredHomepageSnapshotData(parsed);
-  if (!data) {
-    console.warn('homepage snapshot: invalid payload');
-    return null;
-  }
-
-  return {
-    data,
-    age,
-  };
+  const rows = await readSnapshotRowsByPriority(db);
+  const snapshot = readSnapshotValueFromRows({
+    rows,
+    now,
+    maxAgeSeconds: MAX_AGE_SECONDS,
+    warning: 'homepage snapshot: invalid payload',
+    normalize: (bodyJson) => {
+      const parsed = safeJsonParse(bodyJson);
+      if (parsed === null) {
+        return null;
+      }
+      return readStoredHomepageSnapshotData(parsed);
+    },
+  });
+  return snapshot ? { data: snapshot.value, age: snapshot.age } : null;
 }
 
 export async function readHomepageSnapshotJson(
   db: D1Database,
   now: number,
 ): Promise<{ bodyJson: string; age: number } | null> {
-  const row = (await readHomepageArtifactSnapshotRow(db)) ?? (await readHomepageSnapshotRow(db));
-  if (!row) return null;
-
-  const age = Math.max(0, now - row.generated_at);
-  if (age > MAX_AGE_SECONDS) return null;
-
-  if (looksLikeSerializedHomepageArtifact(row.body_json)) {
-    const parsedArtifact = safeJsonParse(row.body_json);
-    if (parsedArtifact === null) return null;
-
-    const data = readStoredHomepageSnapshotData(parsedArtifact);
-    if (!data) {
-      console.warn('homepage snapshot: invalid payload');
-      return null;
-    }
-
-    return {
-      bodyJson: JSON.stringify(data),
-      age,
-    };
-  }
-
-  if (looksLikeSerializedHomepagePayload(row.body_json)) {
-    return {
-      bodyJson: row.body_json,
-      age,
-    };
-  }
-
-  const parsed = safeJsonParse(row.body_json);
-  if (parsed === null) return null;
-
-  const data = readStoredHomepageSnapshotData(parsed);
-  if (!data) {
-    console.warn('homepage snapshot: invalid payload');
-    return null;
-  }
-
-  return {
-    bodyJson: JSON.stringify(data),
-    age,
-  };
+  const rows = await readSnapshotRowsByPriority(db);
+  const snapshot = readSnapshotValueFromRows({
+    rows,
+    now,
+    maxAgeSeconds: MAX_AGE_SECONDS,
+    warning: 'homepage snapshot: invalid payload',
+    normalize: normalizeHomepagePayloadBodyJson,
+  });
+  return snapshot ? { bodyJson: snapshot.value, age: snapshot.age } : null;
 }
 
 export async function readStaleHomepageSnapshot(
   db: D1Database,
   now: number,
 ): Promise<{ data: PublicHomepageResponse; age: number } | null> {
-  const row = (await readHomepageArtifactSnapshotRow(db)) ?? (await readHomepageSnapshotRow(db));
-  if (!row) return null;
-
-  const age = Math.max(0, now - row.generated_at);
-  if (age > MAX_STALE_SECONDS) return null;
-
-  const parsed = safeJsonParse(row.body_json);
-  if (parsed === null) return null;
-
-  const data = readStoredHomepageSnapshotData(parsed);
-  if (!data) {
-    console.warn('homepage snapshot: invalid stale payload');
-    return null;
-  }
-
-  return {
-    data,
-    age,
-  };
+  const rows = await readSnapshotRowsByPriority(db);
+  const snapshot = readSnapshotValueFromRows({
+    rows,
+    now,
+    maxAgeSeconds: MAX_STALE_SECONDS,
+    warning: 'homepage snapshot: invalid stale payload',
+    normalize: (bodyJson) => {
+      const parsed = safeJsonParse(bodyJson);
+      if (parsed === null) {
+        return null;
+      }
+      return readStoredHomepageSnapshotData(parsed);
+    },
+  });
+  return snapshot ? { data: snapshot.value, age: snapshot.age } : null;
 }
 
 export async function readStaleHomepageSnapshotJson(
   db: D1Database,
   now: number,
 ): Promise<{ bodyJson: string; age: number } | null> {
-  const row = (await readHomepageArtifactSnapshotRow(db)) ?? (await readHomepageSnapshotRow(db));
-  if (!row) return null;
-
-  const age = Math.max(0, now - row.generated_at);
-  if (age > MAX_STALE_SECONDS) return null;
-
-  if (looksLikeSerializedHomepageArtifact(row.body_json)) {
-    const parsedArtifact = safeJsonParse(row.body_json);
-    if (parsedArtifact === null) return null;
-
-    const data = readStoredHomepageSnapshotData(parsedArtifact);
-    if (!data) {
-      console.warn('homepage snapshot: invalid stale payload');
-      return null;
-    }
-
-    return {
-      bodyJson: JSON.stringify(data),
-      age,
-    };
-  }
-
-  if (looksLikeSerializedHomepagePayload(row.body_json)) {
-    return {
-      bodyJson: row.body_json,
-      age,
-    };
-  }
-
-  const parsed = safeJsonParse(row.body_json);
-  if (parsed === null) return null;
-
-  const data = readStoredHomepageSnapshotData(parsed);
-  if (!data) {
-    console.warn('homepage snapshot: invalid stale payload');
-    return null;
-  }
-
-  return {
-    bodyJson: JSON.stringify(data),
-    age,
-  };
+  const rows = await readSnapshotRowsByPriority(db);
+  const snapshot = readSnapshotValueFromRows({
+    rows,
+    now,
+    maxAgeSeconds: MAX_STALE_SECONDS,
+    warning: 'homepage snapshot: invalid stale payload',
+    normalize: normalizeHomepagePayloadBodyJson,
+  });
+  return snapshot ? { bodyJson: snapshot.value, age: snapshot.age } : null;
 }
 
 export async function readHomepageSnapshotArtifact(
   db: D1Database,
   now: number,
 ): Promise<{ data: PublicHomepageRenderArtifact; age: number } | null> {
-  const row = (await readHomepageArtifactSnapshotRow(db)) ?? (await readHomepageSnapshotRow(db));
-  if (!row) return null;
-
-  const age = Math.max(0, now - row.generated_at);
-  if (age > MAX_AGE_SECONDS) return null;
-
-  const parsed = safeJsonParse(row.body_json);
-  if (parsed === null) return null;
-
-  const render = readStoredHomepageSnapshotRender(parsed);
-  if (!render) {
-    console.warn('homepage snapshot: invalid render payload');
-    return null;
-  }
-
-  return {
-    data: render,
-    age,
-  };
+  const rows = await readSnapshotRowsByPriority(db);
+  const snapshot = readSnapshotValueFromRows({
+    rows,
+    now,
+    maxAgeSeconds: MAX_AGE_SECONDS,
+    warning: 'homepage snapshot: invalid render payload',
+    normalize: (bodyJson) => {
+      const parsed = safeJsonParse(bodyJson);
+      if (parsed === null) {
+        return null;
+      }
+      return readStoredHomepageSnapshotRender(parsed);
+    },
+  });
+  return snapshot ? { data: snapshot.value, age: snapshot.age } : null;
 }
 
 export async function readHomepageSnapshotArtifactJson(
   db: D1Database,
   now: number,
 ): Promise<{ bodyJson: string; age: number } | null> {
-  const row = (await readHomepageArtifactSnapshotRow(db)) ?? (await readHomepageSnapshotRow(db));
-  if (!row) return null;
-
-  const age = Math.max(0, now - row.generated_at);
-  if (age > MAX_AGE_SECONDS) return null;
-
-  if (looksLikeSerializedHomepageArtifact(row.body_json)) {
-    return {
-      bodyJson: row.body_json,
-      age,
-    };
-  }
-
-  const parsed = safeJsonParse(row.body_json);
-  if (parsed === null) return null;
-
-  const render = readStoredHomepageSnapshotRender(parsed);
-  if (!render) {
-    console.warn('homepage snapshot: invalid render payload');
-    return null;
-  }
-
-  return {
-    bodyJson: JSON.stringify(render),
-    age,
-  };
+  const rows = await readSnapshotRowsByPriority(db);
+  const snapshot = readSnapshotValueFromRows({
+    rows,
+    now,
+    maxAgeSeconds: MAX_AGE_SECONDS,
+    warning: 'homepage snapshot: invalid render payload',
+    normalize: normalizeHomepageArtifactBodyJson,
+  });
+  return snapshot ? { bodyJson: snapshot.value, age: snapshot.age } : null;
 }
 
 export async function readStaleHomepageSnapshotArtifact(
   db: D1Database,
   now: number,
 ): Promise<{ data: PublicHomepageRenderArtifact; age: number } | null> {
-  const row = (await readHomepageArtifactSnapshotRow(db)) ?? (await readHomepageSnapshotRow(db));
-  if (!row) return null;
-
-  const age = Math.max(0, now - row.generated_at);
-  if (age > MAX_STALE_SECONDS) return null;
-
-  const parsed = safeJsonParse(row.body_json);
-  if (parsed === null) return null;
-
-  const render = readStoredHomepageSnapshotRender(parsed);
-  if (!render) {
-    console.warn('homepage snapshot: invalid stale render payload');
-    return null;
-  }
-
-  return {
-    data: render,
-    age,
-  };
+  const rows = await readSnapshotRowsByPriority(db);
+  const snapshot = readSnapshotValueFromRows({
+    rows,
+    now,
+    maxAgeSeconds: MAX_STALE_SECONDS,
+    warning: 'homepage snapshot: invalid stale render payload',
+    normalize: (bodyJson) => {
+      const parsed = safeJsonParse(bodyJson);
+      if (parsed === null) {
+        return null;
+      }
+      return readStoredHomepageSnapshotRender(parsed);
+    },
+  });
+  return snapshot ? { data: snapshot.value, age: snapshot.age } : null;
 }
 
 export async function readStaleHomepageSnapshotArtifactJson(
   db: D1Database,
   now: number,
 ): Promise<{ bodyJson: string; age: number } | null> {
-  const row = (await readHomepageArtifactSnapshotRow(db)) ?? (await readHomepageSnapshotRow(db));
-  if (!row) return null;
-
-  const age = Math.max(0, now - row.generated_at);
-  if (age > MAX_STALE_SECONDS) return null;
-
-  if (looksLikeSerializedHomepageArtifact(row.body_json)) {
-    return {
-      bodyJson: row.body_json,
-      age,
-    };
-  }
-
-  const parsed = safeJsonParse(row.body_json);
-  if (parsed === null) return null;
-
-  const render = readStoredHomepageSnapshotRender(parsed);
-  if (!render) {
-    console.warn('homepage snapshot: invalid stale render payload');
-    return null;
-  }
-
-  return {
-    bodyJson: JSON.stringify(render),
-    age,
-  };
+  const rows = await readSnapshotRowsByPriority(db);
+  const snapshot = readSnapshotValueFromRows({
+    rows,
+    now,
+    maxAgeSeconds: MAX_STALE_SECONDS,
+    warning: 'homepage snapshot: invalid stale render payload',
+    normalize: normalizeHomepageArtifactBodyJson,
+  });
+  return snapshot ? { bodyJson: snapshot.value, age: snapshot.age } : null;
 }
 
 export async function readHomepageSnapshotGeneratedAt(
   db: D1Database,
 ): Promise<number | null> {
-  return (
-    (await readSnapshotGeneratedAt(db, SNAPSHOT_ARTIFACT_KEY)) ??
-    (await readSnapshotGeneratedAt(db, SNAPSHOT_KEY))
-  );
+  const rows = await readSnapshotRowsByPriority(db);
+  let freshest: number | null = null;
+
+  for (const row of rows) {
+    if (!normalizeHomepagePayloadBodyJson(row.body_json)) {
+      continue;
+    }
+    if (freshest === null || row.generated_at > freshest) {
+      freshest = row.generated_at;
+    }
+  }
+
+  return freshest;
 }
 
 export async function readHomepageArtifactSnapshotGeneratedAt(
   db: D1Database,
 ): Promise<number | null> {
-  return (
-    (await readSnapshotGeneratedAt(db, SNAPSHOT_ARTIFACT_KEY)) ??
-    (await readSnapshotGeneratedAt(db, SNAPSHOT_KEY))
-  );
+  const row = await readHomepageArtifactSnapshotRow(db);
+  if (!row) {
+    return null;
+  }
+
+  return normalizeHomepageArtifactBodyJson(row.body_json) ? row.generated_at : null;
 }
 
 function homepageSnapshotUpsertStatement(

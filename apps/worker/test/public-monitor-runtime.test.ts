@@ -5,6 +5,7 @@ import {
   materializeMonitorRuntimeTotals,
   readPublicMonitorRuntimeSnapshot,
   runtimeEntryToHeartbeats,
+  writePublicMonitorRuntimeSnapshot,
   type PublicMonitorRuntimeSnapshot,
 } from '../src/public/monitor-runtime';
 import { createFakeD1Database } from './helpers/fake-d1';
@@ -61,6 +62,95 @@ describe('public/monitor-runtime', () => {
       heartbeat_gap_sec: '1o',
       heartbeat_latency_ms: [40, 42],
       heartbeat_status_codes: 'uu',
+    });
+  });
+
+  it('stores the post-state status separately from the raw heartbeat result', () => {
+    const snapshot: PublicMonitorRuntimeSnapshot = {
+      version: 1,
+      generated_at: 60,
+      day_start_at: 0,
+      monitors: [
+        {
+          monitor_id: 1,
+          created_at: 0,
+          interval_sec: 60,
+          range_start_at: 0,
+          materialized_at: 60,
+          last_checked_at: 60,
+          last_status_code: 'u',
+          last_outage_open: false,
+          total_sec: 0,
+          downtime_sec: 0,
+          unknown_sec: 0,
+          uptime_sec: 0,
+          heartbeat_gap_sec: '',
+          heartbeat_latency_ms: [42],
+          heartbeat_status_codes: 'u',
+        },
+      ],
+    };
+
+    const next = applyMonitorRuntimeUpdates(snapshot, 120, [
+      {
+        monitor_id: 1,
+        interval_sec: 60,
+        created_at: 0,
+        checked_at: 120,
+        check_status: 'down',
+        next_status: 'up',
+        latency_ms: null,
+      },
+    ]);
+
+    expect(next.monitors[0]).toMatchObject({
+      last_status_code: 'u',
+      last_outage_open: false,
+      heartbeat_status_codes: 'du',
+    });
+  });
+
+  it('ignores out-of-order updates for existing runtime entries', () => {
+    const snapshot: PublicMonitorRuntimeSnapshot = {
+      version: 1,
+      generated_at: 120,
+      day_start_at: 0,
+      monitors: [
+        {
+          monitor_id: 1,
+          created_at: 0,
+          interval_sec: 60,
+          range_start_at: 0,
+          materialized_at: 120,
+          last_checked_at: 120,
+          last_status_code: 'u',
+          last_outage_open: false,
+          total_sec: 60,
+          downtime_sec: 0,
+          unknown_sec: 0,
+          uptime_sec: 60,
+          heartbeat_gap_sec: '1o',
+          heartbeat_latency_ms: [40, 42],
+          heartbeat_status_codes: 'uu',
+        },
+      ],
+    };
+
+    const next = applyMonitorRuntimeUpdates(snapshot, 180, [
+      {
+        monitor_id: 1,
+        interval_sec: 60,
+        created_at: 0,
+        checked_at: 90,
+        check_status: 'down',
+        next_status: 'down',
+        latency_ms: null,
+      },
+    ]);
+
+    expect(next).toEqual({
+      ...snapshot,
+      generated_at: 180,
     });
   });
 
@@ -161,5 +251,48 @@ describe('public/monitor-runtime', () => {
       { checked_at: 60, latency_ms: null, status: 'down' },
       { checked_at: 0, latency_ms: 22, status: 'maintenance' },
     ]);
+  });
+
+  it('does not let an older runtime snapshot overwrite a newer one', async () => {
+    const rows = new Map<string, { generated_at: number; body_json: string; updated_at: number }>();
+    const db = createFakeD1Database([
+      {
+        match: 'insert into public_snapshots',
+        run: (args) => {
+          const [key, generatedAt, bodyJson, updatedAt] = args as [string, number, string, number];
+          const existing = rows.get(key);
+          if (!existing || generatedAt >= existing.generated_at) {
+            rows.set(key, {
+              generated_at: generatedAt,
+              body_json: bodyJson,
+              updated_at: updatedAt,
+            });
+          }
+          return { meta: { changes: 1 } };
+        },
+      },
+    ]);
+
+    const newer: PublicMonitorRuntimeSnapshot = {
+      version: 1,
+      generated_at: 120,
+      day_start_at: 0,
+      monitors: [],
+    };
+    const older: PublicMonitorRuntimeSnapshot = {
+      version: 1,
+      generated_at: 90,
+      day_start_at: 0,
+      monitors: [],
+    };
+
+    await writePublicMonitorRuntimeSnapshot(db, newer, 140);
+    await writePublicMonitorRuntimeSnapshot(db, older, 160);
+
+    expect(rows.get('monitor-runtime')).toEqual({
+      generated_at: 120,
+      body_json: JSON.stringify(newer),
+      updated_at: 140,
+    });
   });
 });

@@ -112,6 +112,32 @@ describe('snapshots/public-status', () => {
     warn.mockRestore();
   });
 
+  it('rejects nested invalid snapshot payloads that only match the top-level shape', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const now = 200;
+    const payload = {
+      ...samplePayload(190),
+      banner: {
+        source: 'monitors',
+        status: 'operational',
+      },
+    };
+    const db = createFakeD1Database([
+      {
+        match: 'from public_snapshots',
+        first: () => ({
+          generated_at: 190,
+          body_json: JSON.stringify(payload),
+        }),
+      },
+    ]);
+
+    await expect(readStatusSnapshot(db, now)).resolves.toBeNull();
+    await expect(readStatusSnapshotJson(db, now)).resolves.toBeNull();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it('falls back to live compute when snapshot reads fail', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
@@ -207,6 +233,39 @@ describe('snapshots/public-status', () => {
     await writeStatusSnapshot(db, now, payload);
 
     expect(boundArgs).toEqual(['status', 280, JSON.stringify(payload), now]);
+  });
+
+  it('does not let an older status snapshot overwrite a newer one', async () => {
+    const rows = new Map<string, { generated_at: number; body_json: string; updated_at: number }>();
+    const db = createFakeD1Database([
+      {
+        match: 'insert into public_snapshots',
+        run: (args) => {
+          const [key, generatedAt, bodyJson, updatedAt] = args as [string, number, string, number];
+          const existing = rows.get(key);
+          if (!existing || generatedAt >= existing.generated_at) {
+            rows.set(key, {
+              generated_at: generatedAt,
+              body_json: bodyJson,
+              updated_at: updatedAt,
+            });
+          }
+          return { meta: { changes: 1 } };
+        },
+      },
+    ]);
+
+    const newerPayload = samplePayload(300);
+    const olderPayload = samplePayload(280);
+
+    await writeStatusSnapshot(db, 320, newerPayload);
+    await writeStatusSnapshot(db, 340, olderPayload);
+
+    expect(rows.get('status')).toEqual({
+      generated_at: 300,
+      body_json: JSON.stringify(newerPayload),
+      updated_at: 320,
+    });
   });
 
   it('sets bounded cache-control headers based on current snapshot age', () => {

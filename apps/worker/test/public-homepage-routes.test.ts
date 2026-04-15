@@ -70,9 +70,14 @@ async function requestHomepageArtifact(handlers: FakeD1QueryHandler[]) {
 }
 
 async function requestHomepageViaApp(
-  path: '/api/v1/public/homepage' | '/api/v1/public/homepage-artifact',
+  path:
+    | '/api/v1/public/homepage'
+    | '/api/v1/public/homepage/'
+    | '/api/v1/public/homepage-artifact'
+    | '/api/v1/public/homepage-artifact/',
   handlers: FakeD1QueryHandler[],
   origin = 'https://status-web.example.com',
+  method = 'GET',
 ) {
   const env = {
     DB: createFakeD1Database(handlers),
@@ -81,6 +86,7 @@ async function requestHomepageViaApp(
 
   return worker.fetch(
     new Request(`https://status.example.com${path}`, {
+      method,
       headers: { Origin: origin },
     }),
     env,
@@ -278,6 +284,47 @@ describe('public homepage route', () => {
     expect(res.headers.get('Vary')).toContain('Origin');
   });
 
+  it('falls back to the legacy combined homepage row for artifacts when the artifact row is invalid', async () => {
+    const payload = samplePayload(190);
+    const render = {
+      generated_at: payload.generated_at,
+      preload_html: '<div id="uptimer-preload">hello</div>',
+      snapshot: payload,
+      meta_title: 'Uptimer',
+      meta_description: 'All Systems Operational',
+    };
+    vi.spyOn(Date, 'now').mockReturnValue(200_000);
+
+    const res = await requestHomepageArtifact([
+      {
+        match: 'from public_snapshots',
+        first: (args) => {
+          if (args[0] === 'homepage:artifact') {
+            return {
+              generated_at: payload.generated_at,
+              body_json:
+                '{"generated_at":190,"preload_html":"<div>bad</div>","snapshot":{"generated_at":190',
+            };
+          }
+          if (args[0] === 'homepage') {
+            return {
+              generated_at: payload.generated_at,
+              body_json: JSON.stringify({
+                version: 2,
+                data: payload,
+                render,
+              }),
+            };
+          }
+          return null;
+        },
+      },
+    ]);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(render);
+  });
+
   it('reads homepage payloads from artifact snapshots on the direct public route', async () => {
     const payload = samplePayload(190);
     const render = {
@@ -299,6 +346,36 @@ describe('public homepage route', () => {
                 body_json: JSON.stringify(render),
               }
             : null,
+      },
+    ]);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(payload);
+  });
+
+  it('falls back to the homepage payload row when the artifact row is invalid', async () => {
+    const payload = samplePayload(190);
+    vi.spyOn(Date, 'now').mockReturnValue(200_000);
+
+    const res = await requestHomepage([
+      {
+        match: 'from public_snapshots',
+        first: (args) => {
+          if (args[0] === 'homepage:artifact') {
+            return {
+              generated_at: payload.generated_at,
+              body_json:
+                '{"generated_at":190,"preload_html":"<div>bad</div>","snapshot":{"generated_at":190',
+            };
+          }
+          if (args[0] === 'homepage') {
+            return {
+              generated_at: payload.generated_at,
+              body_json: JSON.stringify(payload),
+            };
+          }
+          return null;
+        },
       },
     ]);
 
@@ -407,6 +484,72 @@ describe('public homepage route', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(payload);
+  });
+
+  it('falls back to the homepage payload row via the worker hot path when the artifact row is invalid', async () => {
+    const payload = samplePayload(190);
+    vi.spyOn(Date, 'now').mockReturnValue(200_000);
+
+    const res = await requestHomepageViaApp('/api/v1/public/homepage', [
+      {
+        match: 'from public_snapshots',
+        first: (args) => {
+          if (args[0] === 'homepage:artifact') {
+            return {
+              generated_at: payload.generated_at,
+              body_json:
+                '{"generated_at":190,"preload_html":"<div>bad</div>","snapshot":{"generated_at":190',
+            };
+          }
+          if (args[0] === 'homepage') {
+            return {
+              generated_at: payload.generated_at,
+              body_json: JSON.stringify(payload),
+            };
+          }
+          return null;
+        },
+      },
+    ]);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(payload);
+  });
+
+  it('rejects non-GET methods on the worker hot homepage endpoint', async () => {
+    const res = await requestHomepageViaApp(
+      '/api/v1/public/homepage',
+      [],
+      'https://status-web.example.com',
+      'POST',
+    );
+
+    expect(res.status).toBe(405);
+    expect(res.headers.get('Allow')).toBe('GET, OPTIONS');
+  });
+
+  it('rejects non-GET methods on trailing-slash worker hot homepage endpoints', async () => {
+    const res = await requestHomepageViaApp(
+      '/api/v1/public/homepage/',
+      [],
+      'https://status-web.example.com',
+      'POST',
+    );
+
+    expect(res.status).toBe(405);
+    expect(res.headers.get('Allow')).toBe('GET, OPTIONS');
+  });
+
+  it('rejects non-GET methods on the worker hot homepage artifact endpoint', async () => {
+    const res = await requestHomepageViaApp(
+      '/api/v1/public/homepage-artifact',
+      [],
+      'https://status-web.example.com',
+      'DELETE',
+    );
+
+    expect(res.status).toBe(405);
+    expect(res.headers.get('Allow')).toBe('GET, OPTIONS');
   });
 
   it('falls back to the fresh public status snapshot when the full homepage snapshot is missing', async () => {

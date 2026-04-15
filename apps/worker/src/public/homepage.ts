@@ -1407,13 +1407,22 @@ export function tryPatchPublicHomepagePayloadFromRuntimeUpdates(opts: {
   if (!baseSnapshot || !canReuseStaticHomepageSections(baseSnapshot)) {
     return null;
   }
-  if (updates.length !== baseSnapshot.monitors.length) {
+  if (updates.length === 0 || updates.length !== baseSnapshot.monitors.length) {
     return null;
   }
 
   const updateById = new Map<number, MonitorRuntimeUpdate>();
   for (const update of updates) {
     if (!Number.isInteger(update.monitor_id) || update.monitor_id <= 0) {
+      return null;
+    }
+    if (!Number.isInteger(update.checked_at) || update.checked_at < update.created_at) {
+      return null;
+    }
+    if (update.checked_at > now) {
+      return null;
+    }
+    if (updateById.has(update.monitor_id)) {
       return null;
     }
     updateById.set(update.monitor_id, update);
@@ -1426,6 +1435,9 @@ export function tryPatchPublicHomepagePayloadFromRuntimeUpdates(opts: {
   const nextMonitors = baseSnapshot.monitors.map((monitor) => {
     const update = updateById.get(monitor.id);
     if (!update) {
+      return null;
+    }
+    if (monitor.last_checked_at !== null && update.checked_at <= monitor.last_checked_at) {
       return null;
     }
 
@@ -1543,28 +1555,14 @@ export async function computePublicHomepagePayload(
   const trace = opts.trace;
   const includeHiddenMonitors = false;
   const baseSnapshot = parseHomepageSnapshotBodyJson(opts.baseSnapshotBodyJson);
-  const reuseStaticSections =
-    baseSnapshot !== null && canReuseStaticHomepageSections(baseSnapshot);
-  const reusedSettings = reuseStaticSections
-    ? {
-        site_title: baseSnapshot.site_title,
-        site_description: baseSnapshot.site_description,
-        site_locale: baseSnapshot.site_locale,
-        site_timezone: baseSnapshot.site_timezone,
-        uptime_rating_level: baseSnapshot.uptime_rating_level as 1 | 2 | 3 | 4 | 5,
-      }
-    : null;
-
-  const settingsPromise = reusedSettings
-    ? Promise.resolve(reusedSettings)
-    : withTraceAsync(trace, 'homepage_settings', async () => await readPublicSiteSettings(db));
-  const maintenanceWindowsPromise = reuseStaticSections
-    ? Promise.resolve({ active: [], upcoming: [] })
-    : withTraceAsync(
-        trace,
-        'homepage_maintenance_windows',
-        async () => await listVisibleMaintenanceWindows(db, now, includeHiddenMonitors),
-      );
+  const settingsPromise = withTraceAsync(trace, 'homepage_settings', async () =>
+    await readPublicSiteSettings(db),
+  );
+  const maintenanceWindowsPromise = withTraceAsync(
+    trace,
+    'homepage_maintenance_windows',
+    async () => await listVisibleMaintenanceWindows(db, now, includeHiddenMonitors),
+  );
 
   const [settings, monitorData, activeIncidents, maintenanceWindows, historyPreviews] =
     await Promise.all([
@@ -1595,20 +1593,13 @@ export async function computePublicHomepagePayload(
       withTraceAsync(
         trace,
         'homepage_active_incidents',
-        async () =>
-          reuseStaticSections ? [] : await listVisibleActiveIncidents(db, includeHiddenMonitors),
+        async () => await listVisibleActiveIncidents(db, includeHiddenMonitors),
       ),
       maintenanceWindowsPromise,
       withTraceAsync(
         trace,
         'homepage_history_previews',
-        async () =>
-          reuseStaticSections
-            ? {
-                resolvedIncidentPreview: null,
-                maintenanceHistoryPreview: null,
-              }
-            : await readHomepageHistoryPreviews(db, now, trace),
+        async () => await readHomepageHistoryPreviews(db, now, trace),
       ),
     ]);
 

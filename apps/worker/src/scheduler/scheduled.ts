@@ -40,15 +40,9 @@ const PERSIST_BATCH_SIZE = Math.max(
   ),
 );
 
-type HomepageRefreshContext = {
-  runtimeUpdates?: MonitorRuntimeUpdate[];
-  trustBaseSnapshotMonitorMetadata?: boolean;
-};
-
 async function refreshHomepageSnapshotInline(
   env: Env,
   now: number,
-  context: HomepageRefreshContext = {},
 ): Promise<void> {
   const [
     { computePublicHomepagePayload },
@@ -67,11 +61,6 @@ async function refreshHomepageSnapshotInline(
     compute: () =>
       computePublicHomepagePayload(env.DB, now, {
         baseSnapshotBodyJson: baseSnapshot.bodyJson,
-        ...(context.trustBaseSnapshotMonitorMetadata !== undefined
-          ? {
-              trustBaseSnapshotMonitorMetadata: context.trustBaseSnapshotMonitorMetadata,
-            }
-          : {}),
       }),
     seedDataSnapshot: baseSnapshot.seedDataSnapshot,
   });
@@ -114,7 +103,6 @@ type ScheduledCheckBatchServiceContext = {
 
 async function refreshHomepageSnapshotViaService(
   env: Env,
-  context: HomepageRefreshContext = {},
 ): Promise<HomepageRefreshServiceResult> {
   if (!env.SELF) {
     throw new Error('SELF service binding missing');
@@ -123,23 +111,14 @@ async function refreshHomepageSnapshotViaService(
     throw new Error('ADMIN_TOKEN missing');
   }
 
-  const useJsonBody =
-    context.runtimeUpdates !== undefined || context.trustBaseSnapshotMonitorMetadata === true;
   const res = await env.SELF.fetch(
     new Request('http://internal/api/v1/internal/refresh/homepage', {
       method: 'POST',
       headers: {
-        'Content-Type': useJsonBody ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8',
+        'Content-Type': 'text/plain; charset=utf-8',
         'X-Uptimer-Refresh-Source': 'scheduled',
       },
-      body: useJsonBody
-        ? JSON.stringify({
-            token: env.ADMIN_TOKEN,
-            runtime_updates: context.runtimeUpdates ?? undefined,
-            trust_base_snapshot_monitor_metadata:
-              context.trustBaseSnapshotMonitorMetadata === true ? true : undefined,
-          })
-        : env.ADMIN_TOKEN,
+      body: env.ADMIN_TOKEN,
     }),
   );
 
@@ -619,6 +598,8 @@ function getUpsertMonitorStateStatement(
       last_error = excluded.last_error,
       consecutive_failures = excluded.consecutive_failures,
       consecutive_successes = excluded.consecutive_successes
+    WHERE monitor_state.last_checked_at IS NULL
+      OR excluded.last_checked_at >= monitor_state.last_checked_at
   `);
   templates.upsertMonitorStateByRowCount.set(rowCount, statement);
   return statement;
@@ -970,15 +951,15 @@ export async function runScheduledTick(env: Env, ctx: ExecutionContext): Promise
   const now = Math.floor(Date.now() / 1000);
   const checkedAt = Math.floor(now / 60) * 60;
   const totalStart = performance.now();
-  const queueHomepageRefresh = (context: HomepageRefreshContext = {}) =>
+  const queueHomepageRefresh = () =>
     env.SELF
-      ? refreshHomepageSnapshotViaService(env, context).catch(async (err) => {
+      ? refreshHomepageSnapshotViaService(env).catch(async (err) => {
           console.warn('homepage snapshot: service refresh failed', err);
-          await refreshHomepageSnapshotInline(env, now, context).catch((fallbackErr) => {
+          await refreshHomepageSnapshotInline(env, now).catch((fallbackErr) => {
             console.warn('homepage snapshot: refresh failed', fallbackErr);
           });
         })
-      : refreshHomepageSnapshotInline(env, now, context).catch((err) => {
+      : refreshHomepageSnapshotInline(env, now).catch((err) => {
           console.warn('homepage snapshot: refresh failed', err);
         });
 
@@ -1010,11 +991,7 @@ export async function runScheduledTick(env: Env, ctx: ExecutionContext): Promise
   };
 
   if (due.length === 0) {
-    ctx.waitUntil(
-      queueHomepageRefresh({
-        trustBaseSnapshotMonitorMetadata: true,
-      }),
-    );
+    ctx.waitUntil(queueHomepageRefresh());
     return;
   }
 
@@ -1133,10 +1110,5 @@ export async function runScheduledTick(env: Env, ctx: ExecutionContext): Promise
     );
   }
 
-  ctx.waitUntil(
-    queueHomepageRefresh({
-      runtimeUpdates,
-      trustBaseSnapshotMonitorMetadata: true,
-    }),
-  );
+  ctx.waitUntil(queueHomepageRefresh());
 }

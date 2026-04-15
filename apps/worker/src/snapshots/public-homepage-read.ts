@@ -1,4 +1,10 @@
 import { AppError } from '../middleware/errors';
+import {
+  publicHomepageRenderArtifactSchema,
+  publicHomepageResponseSchema,
+  type PublicHomepageRenderArtifact,
+  type PublicHomepageResponse,
+} from '../schemas/public-homepage';
 
 const SNAPSHOT_KEY = 'homepage';
 const SNAPSHOT_ARTIFACT_KEY = 'homepage:artifact';
@@ -12,13 +18,7 @@ const READ_SNAPSHOT_SQL = `
   FROM public_snapshots
   WHERE key = ?1
 `;
-const READ_SNAPSHOT_GENERATED_AT_SQL = `
-  SELECT generated_at
-  FROM public_snapshots
-  WHERE key = ?1
-`;
 const readSnapshotStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
-const readSnapshotGeneratedAtStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
 
 type SnapshotRow = {
   generated_at: number;
@@ -30,56 +30,13 @@ type NormalizedSnapshotPayloadRow = {
   bodyJson: string;
 };
 
+type SnapshotJsonResult = {
+  bodyJson: string;
+  age: number;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
-}
-
-function looksLikeHomepagePayload(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.generated_at === 'number' &&
-    (value.bootstrap_mode === 'full' || value.bootstrap_mode === 'partial') &&
-    typeof value.monitor_count_total === 'number' &&
-    typeof value.site_title === 'string' &&
-    Array.isArray(value.monitors) &&
-    Array.isArray(value.active_incidents) &&
-    isRecord(value.summary) &&
-    isRecord(value.banner) &&
-    isRecord(value.maintenance_windows)
-  );
-}
-
-function looksLikeHomepageArtifact(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.generated_at === 'number' &&
-    typeof value.preload_html === 'string' &&
-    typeof value.meta_title === 'string' &&
-    typeof value.meta_description === 'string' &&
-    looksLikeHomepagePayload(value.snapshot)
-  );
-}
-
-function looksLikeSerializedHomepageArtifact(text: string): boolean {
-  const trimmed = text.trim();
-  return (
-    trimmed.startsWith('{"generated_at":') &&
-    trimmed.includes('"preload_html"') &&
-    trimmed.includes('"meta_title"') &&
-    trimmed.includes('"snapshot"')
-  );
-}
-
-function looksLikeSerializedHomepagePayload(text: string): boolean {
-  const trimmed = text.trim();
-  return (
-    trimmed.startsWith('{"generated_at":') &&
-    trimmed.includes('"bootstrap_mode"') &&
-    trimmed.includes('"monitor_count_total"') &&
-    !trimmed.includes('"preload_html":') &&
-    !trimmed.includes('"meta_title":') &&
-    !trimmed.includes('"meta_description":')
-  );
 }
 
 function safeJsonParse(text: string): unknown | null {
@@ -92,38 +49,75 @@ function safeJsonParse(text: string): unknown | null {
   }
 }
 
-function snapshotBodyJsonFromParsed(value: unknown): string | null {
-  if (looksLikeHomepagePayload(value)) {
-    return JSON.stringify(value);
+function normalizeDirectHomepagePayload(value: unknown): PublicHomepageResponse | null {
+  const directPayload = publicHomepageResponseSchema.safeParse(value);
+  if (directPayload.success) {
+    return directPayload.data;
+  }
+  if (!isRecord(value)) {
+    return null;
   }
 
-  if (looksLikeHomepageArtifact(value) && isRecord(value)) {
-    return JSON.stringify(value.snapshot);
-  }
+  const normalizedPayload = publicHomepageResponseSchema.safeParse({
+    ...value,
+    bootstrap_mode:
+      value.bootstrap_mode === 'full' || value.bootstrap_mode === 'partial'
+        ? value.bootstrap_mode
+        : 'full',
+    monitor_count_total: Array.isArray(value.monitors) ? value.monitors.length : 0,
+  });
+  return normalizedPayload.success ? normalizedPayload.data : null;
+}
 
+function normalizeHomepagePayload(value: unknown): PublicHomepageResponse | null {
+  const artifact = publicHomepageRenderArtifactSchema.safeParse(value);
+  if (artifact.success) {
+    return artifact.data.snapshot;
+  }
   if (!isRecord(value)) {
     return null;
   }
 
   const version = value.version;
   if (version === SPLIT_SNAPSHOT_VERSION || version === LEGACY_COMBINED_SNAPSHOT_VERSION) {
-    const data = value.data;
-    if (looksLikeHomepagePayload(data)) {
-      return JSON.stringify(data);
-    }
+    return normalizeDirectHomepagePayload(value.data);
   }
 
-  return null;
+  return normalizeDirectHomepagePayload(value);
+}
+
+function normalizeHomepageArtifact(value: unknown): PublicHomepageRenderArtifact | null {
+  const artifact = publicHomepageRenderArtifactSchema.safeParse(value);
+  if (artifact.success) {
+    return artifact.data;
+  }
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const version = value.version;
+  if (version !== SPLIT_SNAPSHOT_VERSION && version !== LEGACY_COMBINED_SNAPSHOT_VERSION) {
+    return null;
+  }
+
+  const legacyArtifact = publicHomepageRenderArtifactSchema.safeParse(value.render);
+  return legacyArtifact.success ? legacyArtifact.data : null;
 }
 
 function normalizeHomepagePayloadBodyJson(bodyJson: string): string | null {
-  if (looksLikeSerializedHomepagePayload(bodyJson)) {
-    return bodyJson;
-  }
-
   const parsed = safeJsonParse(bodyJson);
   if (parsed === null) return null;
-  return snapshotBodyJsonFromParsed(parsed);
+
+  const payload = normalizeHomepagePayload(parsed);
+  return payload ? JSON.stringify(payload) : null;
+}
+
+function normalizeHomepageArtifactBodyJson(bodyJson: string): string | null {
+  const parsed = safeJsonParse(bodyJson);
+  if (parsed === null) return null;
+
+  const artifact = normalizeHomepageArtifact(parsed);
+  return artifact ? JSON.stringify(artifact) : null;
 }
 
 function isSameUtcDay(a: number, b: number): boolean {
@@ -148,36 +142,21 @@ async function readSnapshotRow(
   }
 }
 
-async function readSnapshotGeneratedAt(db: D1Database, key: string): Promise<number | null> {
-  try {
-    const cached = readSnapshotGeneratedAtStatementByDb.get(db);
-    const statement = cached ?? db.prepare(READ_SNAPSHOT_GENERATED_AT_SQL);
-    if (!cached) {
-      readSnapshotGeneratedAtStatementByDb.set(db, statement);
-    }
-
-    const row = await statement.bind(key).first<{ generated_at: number }>();
-    return row?.generated_at ?? null;
-  } catch (err) {
-    console.warn('homepage snapshot: read generated_at failed', err);
-    return null;
-  }
-}
-
 export async function readHomepageSnapshotGeneratedAt(db: D1Database): Promise<number | null> {
-  return (
-    (await readSnapshotGeneratedAt(db, SNAPSHOT_ARTIFACT_KEY)) ??
-    (await readSnapshotGeneratedAt(db, SNAPSHOT_KEY))
-  );
+  const rows = await readSnapshotRowsByPriority(db);
+  const validRows = rows
+    .map((row) => normalizeSnapshotPayloadRow(row))
+    .filter((row): row is NormalizedSnapshotPayloadRow => row !== null);
+  const freshest = pickFreshestSnapshotRow(validRows);
+  return freshest?.generatedAt ?? null;
 }
 
 export async function readHomepageArtifactSnapshotGeneratedAt(
   db: D1Database,
 ): Promise<number | null> {
-  return (
-    (await readSnapshotGeneratedAt(db, SNAPSHOT_ARTIFACT_KEY)) ??
-    (await readSnapshotGeneratedAt(db, SNAPSHOT_KEY))
-  );
+  const row = await readSnapshotRow(db, SNAPSHOT_ARTIFACT_KEY);
+  if (!row) return null;
+  return normalizeHomepageArtifactBodyJson(row.body_json) ? row.generated_at : null;
 }
 
 function normalizeSnapshotPayloadRow(row: SnapshotRow | null): NormalizedSnapshotPayloadRow | null {
@@ -207,6 +186,44 @@ function pickFreshestSnapshotRow(
     if (!row) continue;
     if (!freshest || row.generatedAt > freshest.generatedAt) {
       freshest = row;
+    }
+  }
+
+  return freshest;
+}
+
+async function readSnapshotRowsByPriority(db: D1Database): Promise<SnapshotRow[]> {
+  const [artifactRow, homepageRow] = await Promise.all([
+    readSnapshotRow(db, SNAPSHOT_ARTIFACT_KEY),
+    readSnapshotRow(db, SNAPSHOT_KEY),
+  ]);
+
+  return [artifactRow, homepageRow].filter((row): row is SnapshotRow => row !== null);
+}
+
+function readSnapshotJsonFromRows(
+  rows: readonly SnapshotRow[],
+  now: number,
+  maxAgeSeconds: number,
+  normalizeBodyJson: (bodyJson: string) => string | null,
+  warning: string,
+): SnapshotJsonResult | null {
+  let freshest: SnapshotJsonResult | null = null;
+
+  for (const row of rows) {
+    const age = Math.max(0, now - row.generated_at);
+    if (age > maxAgeSeconds) {
+      continue;
+    }
+
+    const bodyJson = normalizeBodyJson(row.body_json);
+    if (!bodyJson) {
+      console.warn(warning);
+      continue;
+    }
+
+    if (freshest === null || row.generated_at > now - freshest.age) {
+      freshest = { bodyJson, age };
     }
   }
 
@@ -281,20 +298,14 @@ export async function readHomepageSnapshotJsonAnyAge(
   now: number,
   maxStaleSeconds = MAX_STALE_SECONDS,
 ): Promise<{ bodyJson: string; age: number } | null> {
-  const row =
-    (await readSnapshotRow(db, SNAPSHOT_ARTIFACT_KEY)) ?? (await readSnapshotRow(db, SNAPSHOT_KEY));
-  if (!row) return null;
-
-  const age = Math.max(0, now - row.generated_at);
-  if (age > maxStaleSeconds) return null;
-
-  const bodyJson = normalizeHomepagePayloadBodyJson(row.body_json);
-  if (!bodyJson) {
-    console.warn('homepage snapshot: invalid payload');
-    return null;
-  }
-
-  return { bodyJson, age };
+  const rows = await readSnapshotRowsByPriority(db);
+  return readSnapshotJsonFromRows(
+    rows,
+    now,
+    maxStaleSeconds,
+    normalizeHomepagePayloadBodyJson,
+    'homepage snapshot: invalid payload',
+  );
 }
 
 export async function readHomepageSnapshotJson(
@@ -308,51 +319,28 @@ export async function readHomepageSnapshotArtifactJson(
   db: D1Database,
   now: number,
 ): Promise<{ bodyJson: string; age: number } | null> {
-  const row =
-    (await readSnapshotRow(db, SNAPSHOT_ARTIFACT_KEY)) ?? (await readSnapshotRow(db, SNAPSHOT_KEY));
-  if (!row) return null;
-
-  const age = Math.max(0, now - row.generated_at);
-  if (age > MAX_AGE_SECONDS) return null;
-
-  // Fast-path: already-stored JSON (written by our own snapshot writer).
-  if (looksLikeSerializedHomepageArtifact(row.body_json)) {
-    return { bodyJson: row.body_json, age };
-  }
-
-  const parsed = safeJsonParse(row.body_json);
-  if (parsed === null) return null;
-  if (!looksLikeHomepageArtifact(parsed)) {
-    console.warn('homepage snapshot: invalid artifact payload');
-    return null;
-  }
-
-  return { bodyJson: JSON.stringify(parsed), age };
+  const rows = await readSnapshotRowsByPriority(db);
+  return readSnapshotJsonFromRows(
+    rows,
+    now,
+    MAX_AGE_SECONDS,
+    normalizeHomepageArtifactBodyJson,
+    'homepage snapshot: invalid artifact payload',
+  );
 }
 
 export async function readStaleHomepageSnapshotArtifactJson(
   db: D1Database,
   now: number,
 ): Promise<{ bodyJson: string; age: number } | null> {
-  const row =
-    (await readSnapshotRow(db, SNAPSHOT_ARTIFACT_KEY)) ?? (await readSnapshotRow(db, SNAPSHOT_KEY));
-  if (!row) return null;
-
-  const age = Math.max(0, now - row.generated_at);
-  if (age > MAX_STALE_SECONDS) return null;
-
-  if (looksLikeSerializedHomepageArtifact(row.body_json)) {
-    return { bodyJson: row.body_json, age };
-  }
-
-  const parsed = safeJsonParse(row.body_json);
-  if (parsed === null) return null;
-  if (!looksLikeHomepageArtifact(parsed)) {
-    console.warn('homepage snapshot: invalid stale artifact payload');
-    return null;
-  }
-
-  return { bodyJson: JSON.stringify(parsed), age };
+  const rows = await readSnapshotRowsByPriority(db);
+  return readSnapshotJsonFromRows(
+    rows,
+    now,
+    MAX_STALE_SECONDS,
+    normalizeHomepageArtifactBodyJson,
+    'homepage snapshot: invalid stale artifact payload',
+  );
 }
 
 export function assertHomepageArtifactAvailable(): never {

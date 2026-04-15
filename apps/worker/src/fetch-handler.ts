@@ -68,6 +68,16 @@ function jsonError(status: number, code: string, message: string): Response {
   });
 }
 
+function methodNotAllowed(allowedMethods: string): Response {
+  return new Response('Method Not Allowed', {
+    status: 405,
+    headers: {
+      Allow: allowedMethods,
+      'Content-Type': 'text/plain; charset=utf-8',
+    },
+  });
+}
+
 function readBearerToken(authHeader: string | null): string | null {
   if (!authHeader) return null;
   const match = authHeader.match(/^Bearer\\s+(.+)$/i);
@@ -101,6 +111,22 @@ function rewritePublicRequest(req: Request): Request {
     url.pathname = url.pathname.slice(prefix.length);
   }
   return new Request(url.toString(), req);
+}
+
+function canonicalHotPublicPathname(pathname: string): string {
+  if (!pathname.endsWith('/') || pathname === '/') {
+    return pathname;
+  }
+
+  const trimmed = pathname.replace(/\/+$/, '');
+  switch (trimmed) {
+    case '/api/v1/public/status':
+    case '/api/v1/public/homepage':
+    case '/api/v1/public/homepage-artifact':
+      return trimmed;
+    default:
+      return pathname;
+  }
 }
 
 function normalizeTruthyHeader(value: string | null): boolean {
@@ -327,6 +353,7 @@ async function handlePublicStatus(req: Request, env: Env, ctx: ExecutionContext)
 export async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
   const origin = request.headers.get('Origin');
+  const hotPathname = canonicalHotPublicPathname(url.pathname);
 
   if (url.pathname === '/') {
     return new Response('ok');
@@ -346,16 +373,25 @@ export async function handleFetch(request: Request, env: Env, ctx: ExecutionCont
     }
   }
 
+  if (
+    (hotPathname === '/api/v1/public/status' ||
+      hotPathname === '/api/v1/public/homepage' ||
+      hotPathname === '/api/v1/public/homepage-artifact') &&
+    request.method !== 'GET'
+  ) {
+    return applyCorsHeaders(methodNotAllowed('GET, OPTIONS'), origin);
+  }
+
   try {
-    if (url.pathname === '/api/v1/public/homepage-artifact') {
+    if (hotPathname === '/api/v1/public/homepage-artifact') {
       const res = await handlePublicHomepageArtifact(request, env);
       return applyCorsHeaders(res, origin);
     }
-    if (url.pathname === '/api/v1/public/homepage') {
+    if (hotPathname === '/api/v1/public/homepage') {
       const res = await handlePublicHomepage(request, env, ctx);
       return applyCorsHeaders(res, origin);
     }
-    if (url.pathname === '/api/v1/public/status') {
+    if (hotPathname === '/api/v1/public/status') {
       const res = await handlePublicStatus(request, env, ctx);
       return applyCorsHeaders(res, origin);
     }

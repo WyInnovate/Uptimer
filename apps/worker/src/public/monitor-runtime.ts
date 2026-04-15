@@ -17,9 +17,10 @@ const UPSERT_RUNTIME_SNAPSHOT_SQL = `
     generated_at = excluded.generated_at,
     body_json = excluded.body_json,
     updated_at = excluded.updated_at
+  WHERE excluded.generated_at >= public_snapshots.generated_at
 `;
 
-export type MonitorRuntimeStatusCode = 'u' | 'd' | 'm' | 'x';
+export type MonitorRuntimeStatusCode = 'u' | 'd' | 'm' | 'p' | 'x';
 
 export type PublicMonitorRuntimeEntry = {
   monitor_id: number;
@@ -49,7 +50,7 @@ export type PublicMonitorRuntimeSnapshot = {
 export type MonitorRuntimeHeartbeat = {
   checked_at: number;
   latency_ms: number | null;
-  status: 'up' | 'down' | 'maintenance' | 'unknown';
+  status: 'up' | 'down' | 'maintenance' | 'paused' | 'unknown';
 };
 
 export type MonitorRuntimeTotals = {
@@ -159,7 +160,7 @@ const runtimeEntrySchema = z
     range_start_at: z.number().int().nonnegative().nullable(),
     materialized_at: z.number().int().nonnegative(),
     last_checked_at: z.number().int().nonnegative().nullable(),
-    last_status_code: z.enum(['u', 'd', 'm', 'x']),
+    last_status_code: z.enum(['u', 'd', 'm', 'p', 'x']),
     last_outage_open: z.boolean(),
     total_sec: z.number().int().nonnegative(),
     downtime_sec: z.number().int().nonnegative(),
@@ -187,7 +188,7 @@ const runtimeEntrySchema = z
     }
     for (let index = 0; index < value.heartbeat_status_codes.length; index += 1) {
       const code = value.heartbeat_status_codes[index];
-      if (code !== 'u' && code !== 'd' && code !== 'm' && code !== 'x') {
+      if (code !== 'u' && code !== 'd' && code !== 'm' && code !== 'p' && code !== 'x') {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `invalid heartbeat status code at ${index}`,
@@ -248,6 +249,8 @@ export function toRuntimeStatusCode(value: string | null | undefined): MonitorRu
       return 'd';
     case 'maintenance':
       return 'm';
+    case 'paused':
+      return 'p';
     case 'unknown':
     default:
       return 'x';
@@ -264,10 +267,16 @@ export function fromRuntimeStatusCode(
       return 'down';
     case 'm':
       return 'maintenance';
+    case 'p':
+      return 'paused';
     case 'x':
     default:
       return 'unknown';
   }
+}
+
+function toRuntimeCurrentStatusCode(update: MonitorRuntimeUpdate): MonitorRuntimeStatusCode {
+  return toRuntimeStatusCode(update.next_status ?? update.check_status);
 }
 
 function readRuntimeSnapshotStatement(db: D1Database): D1PreparedStatement {
@@ -460,7 +469,7 @@ function createRuntimeEntryForUpdate(
     range_start_at: createdToday ? update.checked_at : dayStart,
     materialized_at: update.checked_at,
     last_checked_at: update.checked_at,
-    last_status_code: toRuntimeStatusCode(update.check_status),
+    last_status_code: toRuntimeCurrentStatusCode(update),
     last_outage_open: update.next_status === 'down',
     total_sec: 0,
     downtime_sec: 0,
@@ -486,10 +495,19 @@ export function applyMonitorRuntimeUpdates(
   for (const update of updates) {
     if (!Number.isInteger(update.monitor_id) || update.monitor_id <= 0) continue;
     if (!Number.isInteger(update.checked_at) || update.checked_at < 0) continue;
+    if (!Number.isInteger(update.created_at) || update.created_at < 0) continue;
+    if (update.checked_at < update.created_at || update.checked_at > now) continue;
 
     const existing = nextById.get(update.monitor_id);
     if (!existing) {
       nextById.set(update.monitor_id, createRuntimeEntryForUpdate(update, dayStart));
+      continue;
+    }
+    if (
+      typeof existing.last_checked_at === 'number' &&
+      Number.isInteger(existing.last_checked_at) &&
+      update.checked_at <= existing.last_checked_at
+    ) {
       continue;
     }
 
@@ -524,7 +542,7 @@ export function applyMonitorRuntimeUpdates(
     existing.materialized_at = update.checked_at;
     const previousLastCheckedAt = existing.last_checked_at;
     existing.last_checked_at = update.checked_at;
-    existing.last_status_code = toRuntimeStatusCode(update.check_status);
+    existing.last_status_code = toRuntimeCurrentStatusCode(update);
     existing.last_outage_open = update.next_status === 'down';
 
     existing.heartbeat_latency_ms.unshift(

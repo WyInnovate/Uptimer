@@ -239,6 +239,38 @@ describe('snapshots/public-homepage', () => {
     ]);
   });
 
+  it('does not let an older homepage snapshot overwrite a newer one', async () => {
+    const rows = new Map<string, { generated_at: number; body_json: string; updated_at: number }>();
+    const db = createFakeD1Database([
+      {
+        match: 'insert into public_snapshots',
+        run: (args) => {
+          const [key, generatedAt, bodyJson, updatedAt] = args as [string, number, string, number];
+          const existing = rows.get(key);
+          if (!existing || generatedAt >= existing.generated_at) {
+            rows.set(key, {
+              generated_at: generatedAt,
+              body_json: bodyJson,
+              updated_at: updatedAt,
+            });
+          }
+          return { meta: { changes: 1 } };
+        },
+      },
+    ]);
+
+    const olderPayload = samplePayload(280);
+    const newerPayload = samplePayload(300);
+
+    await writeHomepageSnapshot(db, 300, newerPayload);
+    await writeHomepageSnapshot(db, 320, olderPayload);
+
+    expect(rows.get('homepage:artifact')?.generated_at).toBe(300);
+    expect(rows.get('homepage:artifact')?.body_json).toBe(
+      JSON.stringify(buildHomepageRenderArtifact(newerPayload)),
+    );
+  });
+
   it('seeds the compact homepage payload row when requested', async () => {
     const boundArgs: unknown[][] = [];
     const db = createFakeD1Database([
@@ -472,6 +504,68 @@ describe('snapshots/public-homepage', () => {
     });
   });
 
+  it('prefers the freshest valid homepage payload row over an older valid artifact row on the hot read path', async () => {
+    const now = 1_728_000_200;
+    const olderPayload = samplePayload(now - 30);
+    const fresherPayload = samplePayload(now - 10);
+    const db = createFakeD1Database([
+      {
+        match: 'select generated_at, body_json from public_snapshots',
+        first: (args) => {
+          if (args[0] === 'homepage:artifact') {
+            return {
+              generated_at: olderPayload.generated_at,
+              body_json: JSON.stringify(buildHomepageRenderArtifact(olderPayload)),
+            };
+          }
+          if (args[0] === 'homepage') {
+            return {
+              generated_at: fresherPayload.generated_at,
+              body_json: JSON.stringify(fresherPayload),
+            };
+          }
+          return null;
+        },
+      },
+    ]);
+
+    await expect(readHomepageSnapshotJsonAnyAge(db, now)).resolves.toEqual({
+      bodyJson: JSON.stringify(fresherPayload),
+      age: 10,
+    });
+  });
+
+  it('falls back to the homepage payload row when the artifact row is invalid on the hot read path', async () => {
+    const now = 1_728_000_200;
+    const payload = samplePayload(now - 10);
+    const db = createFakeD1Database([
+      {
+        match: 'select generated_at, body_json from public_snapshots',
+        first: (args) => {
+          if (args[0] === 'homepage:artifact') {
+            return {
+              generated_at: payload.generated_at,
+              body_json:
+                '{"generated_at":190,"preload_html":"<div>bad</div>","snapshot":{"generated_at":190',
+            };
+          }
+          if (args[0] === 'homepage') {
+            return {
+              generated_at: payload.generated_at,
+              body_json: JSON.stringify(payload),
+            };
+          }
+          return null;
+        },
+      },
+    ]);
+
+    await expect(readHomepageSnapshotJsonAnyAge(db, now)).resolves.toEqual({
+      bodyJson: JSON.stringify(payload),
+      age: 10,
+    });
+  });
+
   it('refreshes only the artifact snapshot when the scheduler path requests it', async () => {
     vi.mocked(acquireLease).mockResolvedValue(true);
 
@@ -516,6 +610,44 @@ describe('snapshots/public-homepage', () => {
 
     expect(refreshed).toBe(true);
     expect(acquireLease).toHaveBeenCalledWith(db, 'snapshot:homepage:refresh', now, 55);
+    expect(compute).toHaveBeenCalledTimes(1);
+    expect(writtenArgs).toEqual([
+      ['homepage:artifact', now, JSON.stringify(buildHomepageRenderArtifact(payload)), now],
+    ]);
+  });
+
+  it('refreshes the artifact snapshot when the homepage row is fresh but the artifact row is missing', async () => {
+    vi.mocked(acquireLease).mockResolvedValue(true);
+
+    const writtenArgs: unknown[][] = [];
+    const now = 1_728_000_120;
+    const payload = samplePayload(now);
+    const db = createFakeD1Database([
+      {
+        match: 'from public_snapshots',
+        first: (args) => {
+          if (args[0] === 'homepage') {
+            return {
+              generated_at: now - 5,
+              body_json: JSON.stringify(samplePayload(now - 5)),
+            };
+          }
+          return null;
+        },
+      },
+      {
+        match: 'insert into public_snapshots',
+        run: (args) => {
+          writtenArgs.push(args);
+          return { meta: { changes: 1 } };
+        },
+      },
+    ]);
+
+    const compute = vi.fn(async () => payload);
+    const refreshed = await refreshPublicHomepageArtifactSnapshotIfNeeded({ db, now, compute });
+
+    expect(refreshed).toBe(true);
     expect(compute).toHaveBeenCalledTimes(1);
     expect(writtenArgs).toEqual([
       ['homepage:artifact', now, JSON.stringify(buildHomepageRenderArtifact(payload)), now],

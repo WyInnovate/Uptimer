@@ -15,6 +15,7 @@ const UPSERT_STATUS_SQL = `
     generated_at = excluded.generated_at,
     body_json = excluded.body_json,
     updated_at = excluded.updated_at
+  WHERE excluded.generated_at >= public_snapshots.generated_at
 `;
 
 const readStatusStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
@@ -28,31 +29,6 @@ export function getSnapshotMaxAgeSeconds() {
   return MAX_AGE_SECONDS;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function looksLikeStatusPayload(value: unknown): value is PublicStatusResponse {
-  if (!isRecord(value)) return false;
-  const maintenance = value.maintenance_windows;
-  return (
-    typeof value.generated_at === 'number' &&
-    typeof value.site_title === 'string' &&
-    typeof value.site_description === 'string' &&
-    typeof value.site_locale === 'string' &&
-    typeof value.site_timezone === 'string' &&
-    typeof value.uptime_rating_level === 'number' &&
-    typeof value.overall_status === 'string' &&
-    isRecord(value.banner) &&
-    isRecord(value.summary) &&
-    Array.isArray(value.monitors) &&
-    Array.isArray(value.active_incidents) &&
-    isRecord(maintenance) &&
-    Array.isArray(maintenance.active) &&
-    Array.isArray(maintenance.upcoming)
-  );
-}
-
 function safeJsonParse(text: string): unknown | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
@@ -61,6 +37,21 @@ function safeJsonParse(text: string): unknown | null {
   } catch {
     return null;
   }
+}
+
+function normalizeStatusSnapshotPayload(value: unknown): PublicStatusResponse | null {
+  const parsed = publicStatusResponseSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function normalizeStatusSnapshotBodyJson(bodyJson: string): string | null {
+  const parsed = safeJsonParse(bodyJson);
+  if (parsed === null) {
+    return null;
+  }
+
+  const payload = normalizeStatusSnapshotPayload(parsed);
+  return payload ? JSON.stringify(payload) : null;
 }
 
 export async function readStatusSnapshot(
@@ -88,11 +79,12 @@ export async function readStatusSnapshot(
       console.warn('public snapshot: invalid JSON, falling back to live');
       return null;
     }
-    if (!looksLikeStatusPayload(parsed)) {
+    const payload = normalizeStatusSnapshotPayload(parsed);
+    if (!payload) {
       console.warn('public snapshot: invalid payload, falling back to live');
       return null;
     }
-    return { data: parsed, age };
+    return { data: payload, age };
   } catch (err) {
     // Backward compatible: if the table doesn't exist yet or snapshot is invalid,
     // callers should fall back to live computation.
@@ -121,16 +113,12 @@ export async function readStatusSnapshotJson(
     const age = Math.max(0, now - row.generated_at);
     if (age > MAX_AGE_SECONDS) return null;
 
-    const parsed = safeJsonParse(row.body_json);
-    if (parsed === null) {
-      console.warn('public snapshot: invalid JSON, falling back to live');
-      return null;
-    }
-    if (!looksLikeStatusPayload(parsed)) {
+    const bodyJson = normalizeStatusSnapshotBodyJson(row.body_json);
+    if (!bodyJson) {
       console.warn('public snapshot: invalid payload, falling back to live');
       return null;
     }
-    return { bodyJson: row.body_json, age };
+    return { bodyJson, age };
   } catch (err) {
     console.warn('public snapshot: read failed, falling back to live', err);
     return null;

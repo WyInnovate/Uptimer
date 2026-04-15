@@ -238,7 +238,6 @@ describe('scheduler/scheduled regression', () => {
     expect(computePublicHomepagePayload).toHaveBeenCalledWith(env.DB, expectedNow, {
       baseSnapshotBodyJson: null,
       runtimeSnapshot: undefined,
-      trustBaseSnapshotMonitorMetadata: true,
     });
   });
 
@@ -259,11 +258,8 @@ describe('scheduler/scheduled regression', () => {
     expect(req).toBeInstanceOf(Request);
     expect(req.method).toBe('POST');
     expect(new URL(req.url).pathname).toBe('/api/v1/internal/refresh/homepage');
-    expect(req.headers.get('Content-Type')).toBe('application/json; charset=utf-8');
-    await expect(req.json()).resolves.toEqual({
-      token: 'test-admin-token',
-      trust_base_snapshot_monitor_metadata: true,
-    });
+    expect(req.headers.get('Content-Type')).toBe('text/plain; charset=utf-8');
+    await expect(req.text()).resolves.toBe('test-admin-token');
     expect(refreshPublicHomepageSnapshot).not.toHaveBeenCalled();
   });
 
@@ -357,6 +353,7 @@ describe('scheduler/scheduled regression', () => {
 
     const stateUpsertIndex = runSql.findIndex((sql) => sql.includes('insert into monitor_state'));
     expect(stateUpsertIndex).toBeGreaterThan(-1);
+    expect(runSql[stateUpsertIndex]).toContain('where monitor_state.last_checked_at is null');
     expect(runArgs[stateUpsertIndex]?.[0]).toBe(101);
     expect(runArgs[stateUpsertIndex]?.[1]).toBe('up');
     expect(runArgs[stateUpsertIndex]?.[2]).toBe(expectedCheckedAt);

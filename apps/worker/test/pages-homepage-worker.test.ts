@@ -237,4 +237,31 @@ describe('pages homepage worker', () => {
     expect(res.headers.get('Content-Type')).toContain('text/html');
     expect(await res.text()).toContain('<div id="root"></div>');
   });
+
+  it('proxies api requests with the original method and preserves upstream status', async () => {
+    installDefaultCacheMock(() => undefined);
+    const env = makeEnv();
+    const upstreamFetch = vi.fn(async (request: Request) => {
+      expect(request.method).toBe('PATCH');
+      expect(request.url).toBe('https://api.example.com/api/v1/public/status');
+      return new Response('denied', {
+        status: 405,
+        headers: { Allow: 'GET, OPTIONS' },
+      });
+    });
+    globalThis.fetch = upstreamFetch as never;
+
+    const res = await pageWorker.fetch(
+      new Request('https://status.example.com/api/v1/public/status', {
+        method: 'PATCH',
+      }),
+      env,
+      { waitUntil: vi.fn() },
+    );
+
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(405);
+    expect(res.headers.get('Allow')).toBe('GET, OPTIONS');
+    expect(await res.text()).toBe('denied');
+  });
 });
