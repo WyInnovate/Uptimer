@@ -1566,11 +1566,12 @@ export function tryPatchPublicHomepagePayloadFromRuntimeUpdates(opts: {
   };
 }
 
-async function readHomepageStaticSectionPresence(
+async function readHomepageScheduledFastGuardState(
   db: D1Database,
   now: number,
   includeHiddenMonitors: boolean,
 ): Promise<{
+  monitorMetadataStamp: HomepageMonitorMetadataStamp;
   hasActiveIncidents: boolean;
   hasActiveMaintenance: boolean;
   hasUpcomingMaintenance: boolean;
@@ -1580,80 +1581,80 @@ async function readHomepageStaticSectionPresence(
   const incidentVisibilitySql = incidentStatusPageVisibilityPredicate(includeHiddenMonitors);
   const maintenanceVisibilitySql =
     maintenanceWindowStatusPageVisibilityPredicate(includeHiddenMonitors);
-
-  const [
-    activeIncident,
-    resolvedIncident,
-    activeMaintenance,
-    upcomingMaintenance,
-    historicalMaintenance,
-  ] = await Promise.all([
-    db
-      .prepare(
-        `
-        SELECT 1 AS present
-        FROM incidents
-        WHERE status != 'resolved'
-          AND ${incidentVisibilitySql}
-        LIMIT 1
-      `,
-      )
-      .first<{ present: number }>(),
-    db
-      .prepare(
-        `
-        SELECT 1 AS present
-        FROM incidents
-        WHERE status = 'resolved'
-          AND ${incidentVisibilitySql}
-        LIMIT 1
-      `,
-      )
-      .first<{ present: number }>(),
-    db
-      .prepare(
-        `
-        SELECT 1 AS present
-        FROM maintenance_windows
-        WHERE starts_at <= ?1 AND ends_at > ?1
-          AND ${maintenanceVisibilitySql}
-        LIMIT 1
-      `,
-      )
-      .bind(now)
-      .first<{ present: number }>(),
-    db
-      .prepare(
-        `
-        SELECT 1 AS present
-        FROM maintenance_windows
-        WHERE starts_at > ?1
-          AND ${maintenanceVisibilitySql}
-        LIMIT 1
-      `,
-      )
-      .bind(now)
-      .first<{ present: number }>(),
-    db
-      .prepare(
-        `
-        SELECT 1 AS present
-        FROM maintenance_windows
-        WHERE ends_at <= ?1
-          AND ${maintenanceVisibilitySql}
-        LIMIT 1
-      `,
-      )
-      .bind(now)
-      .first<{ present: number }>(),
-  ]);
+  const row = await db
+    .prepare(
+      `
+      SELECT
+        (
+          SELECT COUNT(*)
+          FROM monitors m
+          WHERE m.is_active = 1
+            AND ${monitorVisibilityPredicate(includeHiddenMonitors, 'm')}
+        ) AS monitor_count_total,
+        (
+          SELECT MAX(COALESCE(m.updated_at, m.created_at, 0))
+          FROM monitors m
+          WHERE m.is_active = 1
+            AND ${monitorVisibilityPredicate(includeHiddenMonitors, 'm')}
+        ) AS max_updated_at,
+        EXISTS(
+          SELECT 1
+          FROM incidents
+          WHERE status != 'resolved'
+            AND ${incidentVisibilitySql}
+          LIMIT 1
+        ) AS has_active_incidents,
+        EXISTS(
+          SELECT 1
+          FROM incidents
+          WHERE status = 'resolved'
+            AND ${incidentVisibilitySql}
+          LIMIT 1
+        ) AS has_resolved_incident_preview,
+        EXISTS(
+          SELECT 1
+          FROM maintenance_windows
+          WHERE starts_at <= ?1 AND ends_at > ?1
+            AND ${maintenanceVisibilitySql}
+          LIMIT 1
+        ) AS has_active_maintenance,
+        EXISTS(
+          SELECT 1
+          FROM maintenance_windows
+          WHERE starts_at > ?1
+            AND ${maintenanceVisibilitySql}
+          LIMIT 1
+        ) AS has_upcoming_maintenance,
+        EXISTS(
+          SELECT 1
+          FROM maintenance_windows
+          WHERE ends_at <= ?1
+            AND ${maintenanceVisibilitySql}
+          LIMIT 1
+        ) AS has_maintenance_history_preview
+    `,
+    )
+    .bind(now)
+    .first<{
+      monitor_count_total: number | null;
+      max_updated_at: number | null;
+      has_active_incidents: number | null;
+      has_resolved_incident_preview: number | null;
+      has_active_maintenance: number | null;
+      has_upcoming_maintenance: number | null;
+      has_maintenance_history_preview: number | null;
+    }>();
 
   return {
-    hasActiveIncidents: activeIncident !== null,
-    hasActiveMaintenance: activeMaintenance !== null,
-    hasUpcomingMaintenance: upcomingMaintenance !== null,
-    hasResolvedIncidentPreview: resolvedIncident !== null,
-    hasMaintenanceHistoryPreview: historicalMaintenance !== null,
+    monitorMetadataStamp: {
+      monitorCountTotal: row?.monitor_count_total ?? 0,
+      maxUpdatedAt: row?.max_updated_at ?? null,
+    },
+    hasActiveIncidents: (row?.has_active_incidents ?? 0) > 0,
+    hasActiveMaintenance: (row?.has_active_maintenance ?? 0) > 0,
+    hasUpcomingMaintenance: (row?.has_upcoming_maintenance ?? 0) > 0,
+    hasResolvedIncidentPreview: (row?.has_resolved_incident_preview ?? 0) > 0,
+    hasMaintenanceHistoryPreview: (row?.has_maintenance_history_preview ?? 0) > 0,
   };
 }
 
@@ -1670,15 +1671,12 @@ export async function tryComputePublicHomepagePayloadFromScheduledRuntimeUpdates
   }
 
   const includeHiddenMonitors = false;
-  const [settings, monitorMetadataStamp, staticSectionPresence] = await Promise.all([
+  const [settings, guardState] = await Promise.all([
     withTraceAsync(opts.trace, 'homepage_refresh_fast_settings', async () =>
       await readPublicSiteSettings(opts.db, { bypassCache: true }),
     ),
-    withTraceAsync(opts.trace, 'homepage_refresh_fast_monitor_metadata_stamp', async () =>
-      await readHomepageMonitorMetadataStamp(opts.db, includeHiddenMonitors),
-    ),
     withTraceAsync(opts.trace, 'homepage_refresh_fast_static_presence', async () =>
-      await readHomepageStaticSectionPresence(opts.db, opts.now, includeHiddenMonitors),
+      await readHomepageScheduledFastGuardState(opts.db, opts.now, includeHiddenMonitors),
     ),
   ]);
 
@@ -1686,15 +1684,15 @@ export async function tryComputePublicHomepagePayloadFromScheduledRuntimeUpdates
     return null;
   }
   if (
-    staticSectionPresence.hasActiveIncidents ||
-    staticSectionPresence.hasActiveMaintenance ||
-    staticSectionPresence.hasUpcomingMaintenance ||
-    staticSectionPresence.hasResolvedIncidentPreview ||
-    staticSectionPresence.hasMaintenanceHistoryPreview
+    guardState.hasActiveIncidents ||
+    guardState.hasActiveMaintenance ||
+    guardState.hasUpcomingMaintenance ||
+    guardState.hasResolvedIncidentPreview ||
+    guardState.hasMaintenanceHistoryPreview
   ) {
     return null;
   }
-  if (!hasCompatibleBaseSnapshotMonitorMetadataStamp(baseSnapshot, monitorMetadataStamp)) {
+  if (!hasCompatibleBaseSnapshotMonitorMetadataStamp(baseSnapshot, guardState.monitorMetadataStamp)) {
     return null;
   }
 
@@ -1715,7 +1713,7 @@ export async function tryComputePublicHomepagePayloadFromScheduledRuntimeUpdates
   if (
     !canReuseBaseSnapshotMonitorMetadata({
       baseSnapshot,
-      metadataStamp: monitorMetadataStamp,
+      metadataStamp: guardState.monitorMetadataStamp,
       runtimeSnapshot: runtimeSnapshot ?? null,
     })
   ) {
