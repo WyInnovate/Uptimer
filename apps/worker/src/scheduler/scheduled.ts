@@ -18,7 +18,6 @@ import type { CheckOutcome } from '../monitor/types';
 import { rebuildPublicMonitorRuntimeSnapshot } from '../public/monitor-runtime-bootstrap';
 import {
   refreshPublicMonitorRuntimeSnapshot,
-  type PublicMonitorRuntimeSnapshot,
   type MonitorRuntimeUpdate,
 } from '../public/monitor-runtime';
 import { readSettings } from '../settings';
@@ -41,7 +40,7 @@ const PERSIST_BATCH_SIZE = Math.max(
 );
 
 type HomepageRefreshContext = {
-  runtimeSnapshot?: PublicMonitorRuntimeSnapshot | null;
+  runtimeUpdates?: MonitorRuntimeUpdate[];
   trustBaseSnapshotMonitorMetadata?: boolean;
 };
 
@@ -67,9 +66,6 @@ async function refreshHomepageSnapshotInline(
     compute: () =>
       computePublicHomepagePayload(env.DB, now, {
         baseSnapshotBodyJson: baseSnapshot.bodyJson,
-        ...(context.runtimeSnapshot !== undefined
-          ? { runtimeSnapshot: context.runtimeSnapshot }
-          : {}),
         ...(context.trustBaseSnapshotMonitorMetadata !== undefined
           ? {
               trustBaseSnapshotMonitorMetadata: context.trustBaseSnapshotMonitorMetadata,
@@ -96,7 +92,7 @@ async function refreshHomepageSnapshotViaService(
   }
 
   const useJsonBody =
-    context.runtimeSnapshot !== undefined || context.trustBaseSnapshotMonitorMetadata === true;
+    context.runtimeUpdates !== undefined || context.trustBaseSnapshotMonitorMetadata === true;
   const res = await env.SELF.fetch(
     new Request('http://internal/api/v1/internal/refresh/homepage', {
       method: 'POST',
@@ -107,7 +103,7 @@ async function refreshHomepageSnapshotViaService(
       body: useJsonBody
         ? JSON.stringify({
             token: env.ADMIN_TOKEN,
-            runtime_snapshot: context.runtimeSnapshot ?? undefined,
+            runtime_updates: context.runtimeUpdates ?? undefined,
             trust_base_snapshot_monitor_metadata:
               context.trustBaseSnapshotMonitorMetadata === true ? true : undefined,
           })
@@ -700,14 +696,14 @@ export async function runScheduledTick(env: Env, ctx: ExecutionContext): Promise
   const completed = settled
     .filter((r): r is PromiseFulfilledResult<CompletedDueMonitor> => r.status === 'fulfilled')
     .map((r) => r.value);
-  let runtimeSnapshot: PublicMonitorRuntimeSnapshot | null = null;
+  const runtimeUpdates = completed.map(toMonitorRuntimeUpdate);
 
   if (completed.length > 0) {
     await persistCompletedMonitors(env.DB, completed);
-    runtimeSnapshot = await refreshPublicMonitorRuntimeSnapshot({
+    await refreshPublicMonitorRuntimeSnapshot({
       db: env.DB,
       now,
-      updates: completed.map(toMonitorRuntimeUpdate),
+      updates: runtimeUpdates,
       rebuild: async () => await rebuildPublicMonitorRuntimeSnapshot(env.DB, now),
     });
 
@@ -752,7 +748,7 @@ export async function runScheduledTick(env: Env, ctx: ExecutionContext): Promise
 
   ctx.waitUntil(
     queueHomepageRefresh({
-      runtimeSnapshot,
+      runtimeUpdates,
       trustBaseSnapshotMonitorMetadata: true,
     }),
   );

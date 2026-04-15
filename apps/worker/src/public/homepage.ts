@@ -11,6 +11,7 @@ import {
   runtimeEntryToHeartbeats,
   snapshotHasMonitorIds,
   toMonitorRuntimeEntryMap,
+  type MonitorRuntimeUpdate,
   type PublicMonitorRuntimeEntry,
   type PublicMonitorRuntimeSnapshot,
 } from './monitor-runtime';
@@ -115,7 +116,9 @@ function safeParseJsonArray<T>(text: string | null): T[] {
   }
 }
 
-function parseHomepageSnapshotBodyJson(bodyJson: string | null | undefined): PublicHomepageResponse | null {
+export function parseHomepageSnapshotBodyJson(
+  bodyJson: string | null | undefined,
+): PublicHomepageResponse | null {
   if (!bodyJson) return null;
   try {
     const parsed = JSON.parse(bodyJson) as unknown;
@@ -1295,6 +1298,235 @@ export function homepageFromStatusPayload(
     },
     resolved_incident_preview: previews.resolvedIncidentPreview ?? null,
     maintenance_history_preview: previews.maintenanceHistoryPreview ?? null,
+  };
+}
+
+function cloneHomepageMonitorCard(
+  monitor: HomepageMonitorCard,
+): HomepageMonitorCard {
+  return {
+    ...monitor,
+    heartbeat_strip: {
+      checked_at: [...monitor.heartbeat_strip.checked_at],
+      status_codes: monitor.heartbeat_strip.status_codes,
+      latency_ms: [...monitor.heartbeat_strip.latency_ms],
+    },
+    uptime_30d: monitor.uptime_30d ? { ...monitor.uptime_30d } : null,
+    uptime_day_strip: {
+      day_start_at: [...monitor.uptime_day_strip.day_start_at],
+      downtime_sec: [...monitor.uptime_day_strip.downtime_sec],
+      unknown_sec: [...monitor.uptime_day_strip.unknown_sec],
+      uptime_pct_milli: [...monitor.uptime_day_strip.uptime_pct_milli],
+    },
+  };
+}
+
+function computePatchedHomepageSegmentTotals(opts: {
+  status: HomepageMonitorStatus;
+  isStale: boolean;
+  lastCheckedAt: number | null;
+  intervalSec: number;
+  segmentStart: number;
+  segmentEnd: number;
+}): { downtimeSec: number; unknownSec: number } {
+  if (opts.segmentEnd <= opts.segmentStart) {
+    return { downtimeSec: 0, unknownSec: 0 };
+  }
+
+  const totalSec = opts.segmentEnd - opts.segmentStart;
+  if (opts.status === 'down') {
+    return { downtimeSec: totalSec, unknownSec: 0 };
+  }
+
+  if (
+    opts.isStale ||
+    opts.status === 'unknown' ||
+    opts.lastCheckedAt === null
+  ) {
+    return { downtimeSec: 0, unknownSec: totalSec };
+  }
+
+  const validUntil = opts.lastCheckedAt + Math.max(0, opts.intervalSec) * 2;
+  const unknownStart = Math.max(opts.segmentStart, validUntil);
+  return {
+    downtimeSec: 0,
+    unknownSec: opts.segmentEnd > unknownStart ? opts.segmentEnd - unknownStart : 0,
+  };
+}
+
+function recomputePatchedHomepageUptime30d(opts: {
+  monitor: HomepageMonitorCard;
+  createdAt: number;
+  now: number;
+}): HomepageMonitorCard['uptime_30d'] {
+  const rangeEnd = opts.now;
+  const rangeStart = Math.max(rangeEnd - UPTIME_DAYS * 86400, opts.createdAt);
+  let totalSec = 0;
+  let uptimeSec = 0;
+  const count = Math.min(
+    opts.monitor.uptime_day_strip.day_start_at.length,
+    opts.monitor.uptime_day_strip.downtime_sec.length,
+    opts.monitor.uptime_day_strip.unknown_sec.length,
+  );
+
+  for (let index = 0; index < count; index += 1) {
+    const dayStartAt = opts.monitor.uptime_day_strip.day_start_at[index];
+    if (typeof dayStartAt !== 'number') continue;
+    if (dayStartAt >= rangeEnd || dayStartAt + 86400 <= rangeStart) {
+      continue;
+    }
+
+    const dayTotal = Math.max(
+      0,
+      Math.min(dayStartAt + 86400, rangeEnd) - Math.max(dayStartAt, rangeStart, opts.createdAt),
+    );
+    if (dayTotal === 0) continue;
+
+    totalSec += dayTotal;
+    uptimeSec += Math.max(
+      0,
+      dayTotal -
+        Math.max(0, opts.monitor.uptime_day_strip.downtime_sec[index] ?? 0) -
+        Math.max(0, opts.monitor.uptime_day_strip.unknown_sec[index] ?? 0),
+    );
+  }
+
+  return totalSec === 0
+    ? null
+    : {
+        uptime_pct: (uptimeSec / totalSec) * 100,
+      };
+}
+
+export function tryPatchPublicHomepagePayloadFromRuntimeUpdates(opts: {
+  baseSnapshot: PublicHomepageResponse | null;
+  now: number;
+  updates: MonitorRuntimeUpdate[];
+}): PublicHomepageResponse | null {
+  const { baseSnapshot, now, updates } = opts;
+  if (!baseSnapshot || !canReuseStaticHomepageSections(baseSnapshot)) {
+    return null;
+  }
+  if (updates.length !== baseSnapshot.monitors.length) {
+    return null;
+  }
+
+  const updateById = new Map<number, MonitorRuntimeUpdate>();
+  for (const update of updates) {
+    if (!Number.isInteger(update.monitor_id) || update.monitor_id <= 0) {
+      return null;
+    }
+    updateById.set(update.monitor_id, update);
+  }
+  if (updateById.size !== baseSnapshot.monitors.length) {
+    return null;
+  }
+
+  const todayStartAt = utcDayStart(now);
+  const nextMonitors = baseSnapshot.monitors.map((monitor) => {
+    const update = updateById.get(monitor.id);
+    if (!update) {
+      return null;
+    }
+
+    const nextMonitor = cloneHomepageMonitorCard(monitor);
+    const segmentStart = Math.max(todayStartAt, baseSnapshot.generated_at, update.created_at);
+    const segmentEnd = Math.max(segmentStart, Math.min(update.checked_at, now));
+    const segment = computePatchedHomepageSegmentTotals({
+      status: monitor.status,
+      isStale: monitor.is_stale,
+      lastCheckedAt: monitor.last_checked_at,
+      intervalSec: update.interval_sec,
+      segmentStart,
+      segmentEnd,
+    });
+
+    nextMonitor.last_checked_at = update.checked_at;
+    nextMonitor.status = toMonitorStatus(update.next_status) ?? 'unknown';
+    nextMonitor.is_stale = false;
+
+    nextMonitor.heartbeat_strip.checked_at.unshift(update.checked_at);
+    nextMonitor.heartbeat_strip.latency_ms.unshift(
+      typeof update.latency_ms === 'number' ? Math.round(update.latency_ms) : null,
+    );
+    nextMonitor.heartbeat_strip.status_codes = `${toHeartbeatStatusCode(update.check_status)}${nextMonitor.heartbeat_strip.status_codes}`;
+    if (nextMonitor.heartbeat_strip.checked_at.length > HEARTBEAT_POINTS) {
+      nextMonitor.heartbeat_strip.checked_at.length = HEARTBEAT_POINTS;
+    }
+    if (nextMonitor.heartbeat_strip.latency_ms.length > HEARTBEAT_POINTS) {
+      nextMonitor.heartbeat_strip.latency_ms.length = HEARTBEAT_POINTS;
+    }
+    if (nextMonitor.heartbeat_strip.status_codes.length > HEARTBEAT_POINTS) {
+      nextMonitor.heartbeat_strip.status_codes = nextMonitor.heartbeat_strip.status_codes.slice(
+        0,
+        HEARTBEAT_POINTS,
+      );
+    }
+
+    const todayIndex = nextMonitor.uptime_day_strip.day_start_at.findIndex(
+      (dayStart) => dayStart === todayStartAt,
+    );
+    const bucketIndex =
+      todayIndex >= 0
+        ? todayIndex
+        : nextMonitor.uptime_day_strip.day_start_at.push(todayStartAt) - 1;
+    if (todayIndex < 0) {
+      nextMonitor.uptime_day_strip.downtime_sec.push(0);
+      nextMonitor.uptime_day_strip.unknown_sec.push(0);
+      nextMonitor.uptime_day_strip.uptime_pct_milli.push(null);
+    }
+
+    const currentDowntime = Math.max(0, nextMonitor.uptime_day_strip.downtime_sec[bucketIndex] ?? 0);
+    const currentUnknown = Math.max(0, nextMonitor.uptime_day_strip.unknown_sec[bucketIndex] ?? 0);
+    const totalSec = Math.max(0, now - Math.max(todayStartAt, update.created_at));
+    const downtimeSec = currentDowntime + segment.downtimeSec;
+    const unknownSec = currentUnknown + segment.unknownSec;
+    const uptimeSec = Math.max(0, totalSec - downtimeSec - unknownSec);
+
+    nextMonitor.uptime_day_strip.downtime_sec[bucketIndex] = downtimeSec;
+    nextMonitor.uptime_day_strip.unknown_sec[bucketIndex] = unknownSec;
+    nextMonitor.uptime_day_strip.uptime_pct_milli[bucketIndex] =
+      totalSec === 0 ? null : Math.round((uptimeSec * 100000) / totalSec);
+    nextMonitor.uptime_30d = recomputePatchedHomepageUptime30d({
+      monitor: nextMonitor,
+      createdAt: update.created_at,
+      now,
+    });
+
+    return nextMonitor;
+  });
+
+  if (nextMonitors.some((monitor) => monitor === null)) {
+    return null;
+  }
+
+  const patchedMonitors = nextMonitors.filter(
+    (monitor): monitor is HomepageMonitorCard => monitor !== null,
+  );
+  const summary: PublicHomepageResponse['summary'] = {
+    up: 0,
+    down: 0,
+    maintenance: 0,
+    paused: 0,
+    unknown: 0,
+  };
+  for (const monitor of patchedMonitors) {
+    summary[monitor.status] += 1;
+  }
+
+  return {
+    ...baseSnapshot,
+    generated_at: now,
+    monitor_count_total: patchedMonitors.length,
+    summary,
+    overall_status: computeOverallStatus(summary),
+    banner: buildPublicStatusBanner({
+      counts: summary,
+      monitorCount: patchedMonitors.length,
+      activeIncidents: [],
+      activeMaintenanceWindows: [],
+    }),
+    monitors: patchedMonitors,
   };
 }
 

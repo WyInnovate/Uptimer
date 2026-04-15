@@ -33,7 +33,7 @@ function buildInternalRefreshResponse(ok: boolean, refreshed: boolean): Response
 const internalRefreshJsonBodySchema = z.object({
   token: z.string(),
   trust_base_snapshot_monitor_metadata: z.boolean().optional(),
-  runtime_snapshot: z.unknown().optional(),
+  runtime_updates: z.array(z.unknown()).optional(),
 });
 
 function finalizeInternalRefreshResponse(
@@ -69,8 +69,7 @@ async function handleInternalHomepageRefresh(request: Request, env: Env): Promis
   }
 
   let token = '';
-  let runtimeSnapshot: import('./public/monitor-runtime').PublicMonitorRuntimeSnapshot | null =
-    null;
+  let runtimeUpdates: import('./public/monitor-runtime').MonitorRuntimeUpdate[] | undefined;
   let trustBaseSnapshotMonitorMetadata = false;
   const contentType = request.headers.get('Content-Type') ?? '';
 
@@ -86,15 +85,15 @@ async function handleInternalHomepageRefresh(request: Request, env: Env): Promis
     trustBaseSnapshotMonitorMetadata =
       parsedBody.data.trust_base_snapshot_monitor_metadata === true;
 
-    if (parsedBody.data.runtime_snapshot !== undefined) {
-      const { publicMonitorRuntimeSnapshotSchema } = await import('./public/monitor-runtime');
-      const parsedRuntimeSnapshot = publicMonitorRuntimeSnapshotSchema.safeParse(
-        parsedBody.data.runtime_snapshot,
-      );
-      if (!parsedRuntimeSnapshot.success) {
+    if (parsedBody.data.runtime_updates !== undefined) {
+      const { monitorRuntimeUpdateSchema } = await import('./public/monitor-runtime');
+      const parsedRuntimeUpdates = z
+        .array(monitorRuntimeUpdateSchema)
+        .safeParse(parsedBody.data.runtime_updates);
+      if (!parsedRuntimeUpdates.success) {
         return new Response('Forbidden', { status: 403 });
       }
-      runtimeSnapshot = parsedRuntimeSnapshot.data;
+      runtimeUpdates = parsedRuntimeUpdates.data;
     }
   } else {
     token = (await request.text()).trim();
@@ -220,22 +219,38 @@ async function handleInternalHomepageRefresh(request: Request, env: Env): Promis
           )
         : import('./snapshots/public-homepage'),
     ]);
-    const computed = trace
-      ? await trace.timeAsync(
-          'homepage_refresh_compute',
-          async () =>
-            await homepageMod.computePublicHomepagePayload(env.DB, now, {
-              trace,
-              baseSnapshotBodyJson: baseSnapshot.bodyJson,
-              runtimeSnapshot,
-              trustBaseSnapshotMonitorMetadata,
-            }),
-        )
-      : await homepageMod.computePublicHomepagePayload(env.DB, now, {
-          baseSnapshotBodyJson: baseSnapshot.bodyJson,
-          runtimeSnapshot,
-          trustBaseSnapshotMonitorMetadata,
-        });
+    const patched =
+      runtimeUpdates === undefined || baseSnapshot.bodyJson === null
+        ? null
+        : trace
+          ? trace.time('homepage_refresh_patch', () =>
+              homepageMod.tryPatchPublicHomepagePayloadFromRuntimeUpdates({
+                baseSnapshot: homepageMod.parseHomepageSnapshotBodyJson(baseSnapshot.bodyJson),
+                now,
+                updates: runtimeUpdates,
+              }),
+            )
+          : homepageMod.tryPatchPublicHomepagePayloadFromRuntimeUpdates({
+              baseSnapshot: homepageMod.parseHomepageSnapshotBodyJson(baseSnapshot.bodyJson),
+              now,
+              updates: runtimeUpdates,
+            });
+    const computed = patched
+      ? patched
+      : trace
+        ? await trace.timeAsync(
+            'homepage_refresh_compute',
+            async () =>
+              await homepageMod.computePublicHomepagePayload(env.DB, now, {
+                trace,
+                baseSnapshotBodyJson: baseSnapshot.bodyJson,
+                trustBaseSnapshotMonitorMetadata,
+              }),
+          )
+        : await homepageMod.computePublicHomepagePayload(env.DB, now, {
+            baseSnapshotBodyJson: baseSnapshot.bodyJson,
+            trustBaseSnapshotMonitorMetadata,
+          });
     const payload = trace
       ? trace.time('homepage_refresh_validate', () =>
           snapshotMod.toHomepageSnapshotPayload(computed),

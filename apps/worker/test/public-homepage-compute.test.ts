@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { computePublicHomepagePayload } from '../src/public/homepage';
+import {
+  computePublicHomepagePayload,
+  tryPatchPublicHomepagePayloadFromRuntimeUpdates,
+} from '../src/public/homepage';
 import { createFakeD1Database, type FakeD1QueryHandler } from './helpers/fake-d1';
 
 describe('computePublicHomepagePayload', () => {
@@ -309,5 +312,95 @@ describe('computePublicHomepagePayload', () => {
     });
     expect(payload.monitors[0]?.uptime_day_strip).toEqual(baseSnapshot.monitors[0]?.uptime_day_strip);
     expect(payload.monitors[0]?.uptime_30d).toEqual({ uptime_pct: 100 });
+  });
+
+  it('patches a same-day homepage snapshot from runtime updates without D1 reads', () => {
+    const dayStart = 1_728_000_000;
+    const baseNow = dayStart + 60;
+    const now = dayStart + 120;
+    const baseSnapshot = {
+      generated_at: baseNow,
+      bootstrap_mode: 'full' as const,
+      monitor_count_total: 1,
+      site_title: 'Status Hub',
+      site_description: 'Production services',
+      site_locale: 'en' as const,
+      site_timezone: 'UTC',
+      uptime_rating_level: 4 as const,
+      overall_status: 'up' as const,
+      banner: {
+        source: 'monitors' as const,
+        status: 'operational' as const,
+        title: 'All Systems Operational',
+      },
+      summary: {
+        up: 1,
+        down: 0,
+        maintenance: 0,
+        paused: 0,
+        unknown: 0,
+      },
+      monitors: [
+        {
+          id: 1,
+          name: 'API',
+          type: 'http' as const,
+          group_name: 'Core',
+          status: 'up' as const,
+          is_stale: false,
+          last_checked_at: baseNow,
+          heartbeat_strip: {
+            checked_at: [baseNow],
+            status_codes: 'u',
+            latency_ms: [42],
+          },
+          uptime_30d: { uptime_pct: 100 },
+          uptime_day_strip: {
+            day_start_at: [dayStart],
+            downtime_sec: [0],
+            unknown_sec: [0],
+            uptime_pct_milli: [100_000],
+          },
+        },
+      ],
+      active_incidents: [],
+      maintenance_windows: {
+        active: [],
+        upcoming: [],
+      },
+      resolved_incident_preview: null,
+      maintenance_history_preview: null,
+    };
+
+    const patched = tryPatchPublicHomepagePayloadFromRuntimeUpdates({
+      baseSnapshot,
+      now,
+      updates: [
+        {
+          monitor_id: 1,
+          interval_sec: 60,
+          created_at: dayStart - 1,
+          checked_at: now,
+          check_status: 'up',
+          next_status: 'up',
+          latency_ms: 55,
+        },
+      ],
+    });
+
+    expect(patched).not.toBeNull();
+    expect(patched?.generated_at).toBe(now);
+    expect(patched?.summary).toEqual({
+      up: 1,
+      down: 0,
+      maintenance: 0,
+      paused: 0,
+      unknown: 0,
+    });
+    expect(patched?.monitors[0]?.heartbeat_strip.checked_at[0]).toBe(now);
+    expect(patched?.monitors[0]?.heartbeat_strip.latency_ms[0]).toBe(55);
+    expect(patched?.monitors[0]?.last_checked_at).toBe(now);
+    expect(patched?.monitors[0]?.uptime_day_strip.day_start_at).toEqual([dayStart]);
+    expect(patched?.monitors[0]?.uptime_day_strip.unknown_sec).toEqual([0]);
   });
 });

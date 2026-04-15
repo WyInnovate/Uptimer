@@ -70,6 +70,16 @@ export type MonitorRuntimeUpdate = {
   latency_ms: number | null;
 };
 
+export const monitorRuntimeUpdateSchema = z.object({
+  monitor_id: z.number().int().positive(),
+  interval_sec: z.number().int().positive(),
+  created_at: z.number().int().nonnegative(),
+  checked_at: z.number().int().nonnegative(),
+  check_status: z.string().nullable(),
+  next_status: z.string().nullable(),
+  latency_ms: z.number().nullable(),
+});
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
