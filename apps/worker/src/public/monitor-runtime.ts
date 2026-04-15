@@ -10,6 +10,11 @@ const READ_RUNTIME_SNAPSHOT_SQL = `
   FROM public_snapshots
   WHERE key = ?1
 `;
+const READ_RUNTIME_SNAPSHOT_METADATA_SQL = `
+  SELECT generated_at, updated_at
+  FROM public_snapshots
+  WHERE key = ?1
+`;
 const UPSERT_RUNTIME_SNAPSHOT_SQL = `
   INSERT INTO public_snapshots (key, generated_at, body_json, updated_at)
   VALUES (?1, ?2, ?3, ?4)
@@ -226,7 +231,20 @@ export const publicMonitorRuntimeSnapshotSchema = z.object({
 });
 
 const readRuntimeSnapshotStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
+const readRuntimeSnapshotMetadataStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
 const upsertRuntimeSnapshotStatementByDb = new WeakMap<D1Database, D1PreparedStatement>();
+const runtimeSnapshotCacheByDb = new WeakMap<D1Database, RuntimeSnapshotCacheEntry>();
+
+type RuntimeSnapshotMetadataRow = {
+  generated_at: number;
+  updated_at?: number | null;
+};
+
+type RuntimeSnapshotCacheEntry = {
+  generatedAt: number;
+  updatedAt: number;
+  snapshot: PublicMonitorRuntimeSnapshot;
+};
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
@@ -288,6 +306,15 @@ function readRuntimeSnapshotStatement(db: D1Database): D1PreparedStatement {
   return statement;
 }
 
+function readRuntimeSnapshotMetadataStatement(db: D1Database): D1PreparedStatement {
+  const cached = readRuntimeSnapshotMetadataStatementByDb.get(db);
+  if (cached) return cached;
+
+  const statement = db.prepare(READ_RUNTIME_SNAPSHOT_METADATA_SQL);
+  readRuntimeSnapshotMetadataStatementByDb.set(db, statement);
+  return statement;
+}
+
 function upsertRuntimeSnapshotStatement(
   db: D1Database,
   snapshot: PublicMonitorRuntimeSnapshot,
@@ -307,15 +334,64 @@ function upsertRuntimeSnapshotStatement(
   );
 }
 
+function toSnapshotUpdatedAt(row: RuntimeSnapshotMetadataRow): number {
+  return typeof row.updated_at === 'number' && Number.isFinite(row.updated_at)
+    ? row.updated_at
+    : row.generated_at;
+}
+
+function readCachedRuntimeSnapshot(
+  db: D1Database,
+  generatedAt: number,
+  updatedAt: number,
+): PublicMonitorRuntimeSnapshot | null {
+  const cached = runtimeSnapshotCacheByDb.get(db);
+  if (!cached) {
+    return null;
+  }
+
+  return cached.generatedAt === generatedAt && cached.updatedAt === updatedAt
+    ? cached.snapshot
+    : null;
+}
+
+function writeCachedRuntimeSnapshot(
+  db: D1Database,
+  generatedAt: number,
+  updatedAt: number,
+  snapshot: PublicMonitorRuntimeSnapshot,
+): PublicMonitorRuntimeSnapshot {
+  runtimeSnapshotCacheByDb.set(db, {
+    generatedAt,
+    updatedAt,
+    snapshot,
+  });
+  return snapshot;
+}
+
 async function readStoredMonitorRuntimeSnapshot(
   db: D1Database,
 ): Promise<{ generatedAt: number; snapshot: PublicMonitorRuntimeSnapshot } | null> {
   try {
+    const metadata = await readRuntimeSnapshotMetadataStatement(db).bind(
+      MONITOR_RUNTIME_SNAPSHOT_KEY,
+    ).first<RuntimeSnapshotMetadataRow>();
+    if (!metadata) return null;
+
+    const updatedAt = toSnapshotUpdatedAt(metadata);
+    const cachedSnapshot = readCachedRuntimeSnapshot(db, metadata.generated_at, updatedAt);
+    if (cachedSnapshot) {
+      return {
+        generatedAt: metadata.generated_at,
+        snapshot: cachedSnapshot,
+      };
+    }
+
     const row = await readRuntimeSnapshotStatement(db).bind(MONITOR_RUNTIME_SNAPSHOT_KEY).first<{
       generated_at: number;
       body_json: string;
     }>();
-    if (!row?.body_json) return null;
+    if (!row?.body_json || row.generated_at !== metadata.generated_at) return null;
 
     const parsedJson = JSON.parse(row.body_json) as unknown;
     const parsed = publicMonitorRuntimeSnapshotSchema.safeParse(parsedJson);
@@ -326,7 +402,7 @@ async function readStoredMonitorRuntimeSnapshot(
 
     return {
       generatedAt: row.generated_at,
-      snapshot: parsed.data,
+      snapshot: writeCachedRuntimeSnapshot(db, row.generated_at, updatedAt, parsed.data),
     };
   } catch (err) {
     if (
