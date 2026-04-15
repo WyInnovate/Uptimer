@@ -1577,6 +1577,136 @@ function recomputePatchedHomepageUptime30d(opts: {
       };
 }
 
+function tryPatchPublicHomepagePayloadFromRuntimeSnapshot(opts: {
+  baseSnapshot: PublicHomepageResponse | null;
+  runtimeSnapshot: PublicMonitorRuntimeSnapshot | null;
+  now: number;
+}): PublicHomepageResponse | null {
+  const { baseSnapshot, runtimeSnapshot, now } = opts;
+  if (!baseSnapshot || !runtimeSnapshot || !canPatchHomepageFromRuntime(baseSnapshot)) {
+    return null;
+  }
+  if (Math.max(0, now - baseSnapshot.generated_at) > HOMEPAGE_FAST_PATCH_BASE_MAX_AGE_SECONDS) {
+    return null;
+  }
+  if (
+    runtimeSnapshot.generated_at < baseSnapshot.generated_at ||
+    runtimeSnapshot.generated_at > now ||
+    runtimeSnapshot.day_start_at !== utcDayStart(now)
+  ) {
+    return null;
+  }
+
+  const monitorIds = baseSnapshot.monitors.map((monitor) => monitor.id);
+  if (!snapshotHasMonitorIds(runtimeSnapshot, monitorIds)) {
+    return null;
+  }
+
+  const runtimeById = toMonitorRuntimeEntryMap(runtimeSnapshot);
+  const earliestCreatedAt = baseSnapshot.monitors.reduce((acc, monitor) => {
+    const entry = runtimeById.get(monitor.id);
+    if (!hasReusableRuntimeCreatedAt(entry)) {
+      return acc;
+    }
+    return Math.min(acc, entry.created_at);
+  }, Number.POSITIVE_INFINITY);
+  if (!Number.isFinite(earliestCreatedAt)) {
+    return null;
+  }
+
+  const rangeEndFullDays = utcDayStart(now);
+  const rangeStart = Math.max(now - UPTIME_DAYS * 86400, earliestCreatedAt);
+  const todayStartAt = utcDayStart(now);
+  const needsToday = now > rangeEndFullDays;
+  const noMaintenanceMonitorIds = new Set<number>();
+  const summary: PublicHomepageResponse['summary'] = {
+    up: 0,
+    down: 0,
+    maintenance: 0,
+    paused: 0,
+    unknown: 0,
+  };
+
+  const patchedMonitors: HomepageMonitorCard[] = [];
+  for (const baseMonitor of baseSnapshot.monitors) {
+    const runtimeEntry = runtimeById.get(baseMonitor.id);
+    if (!hasReusableRuntimeCreatedAt(runtimeEntry)) {
+      return null;
+    }
+
+    const presentation = computeHomepageMonitorPresentation(
+      {
+        id: baseMonitor.id,
+        interval_sec: runtimeEntry.interval_sec,
+        last_checked_at: runtimeEntry.last_checked_at,
+        state_status: fromRuntimeStatusCode(runtimeEntry.last_status_code),
+      },
+      now,
+      noMaintenanceMonitorIds,
+    );
+    const heartbeats = runtimeEntryToHeartbeats(runtimeEntry);
+    const monitor: HomepageMonitorCard = {
+      ...baseMonitor,
+      status: presentation.status,
+      is_stale: presentation.is_stale,
+      last_checked_at: runtimeEntry.last_checked_at,
+      heartbeat_strip: {
+        checked_at: heartbeats.map((heartbeat) => heartbeat.checked_at),
+        latency_ms: heartbeats.map((heartbeat) => heartbeat.latency_ms),
+        status_codes: heartbeats.map((heartbeat) => toHeartbeatStatusCode(heartbeat.status)).join(''),
+      },
+      uptime_30d: null,
+      uptime_day_strip: {
+        day_start_at: [],
+        downtime_sec: [],
+        unknown_sec: [],
+        uptime_pct_milli: [],
+      },
+    };
+
+    const totals = {
+      totalSec: 0,
+      uptimeSec: 0,
+    };
+    reuseHistoricalRollupsFromBase({
+      monitor,
+      baseMonitor,
+      monitorCreatedAt: runtimeEntry.created_at,
+      rangeStart,
+      rangeEndFullDays,
+      todayStartAt,
+      totals,
+    });
+    if (needsToday) {
+      addUptimeDay(monitor, totals, todayStartAt, materializeMonitorRuntimeTotals(runtimeEntry, now));
+    }
+    monitor.uptime_30d =
+      totals.totalSec === 0
+        ? null
+        : {
+            uptime_pct: (totals.uptimeSec / totals.totalSec) * 100,
+          };
+
+    summary[monitor.status] += 1;
+    patchedMonitors.push(monitor);
+  }
+
+  return {
+    ...baseSnapshot,
+    generated_at: now,
+    monitor_count_total: patchedMonitors.length,
+    overall_status: computeOverallStatus(summary),
+    banner: buildPublicStatusBanner({
+      counts: summary,
+      monitorCount: patchedMonitors.length,
+      activeIncidents: [],
+      activeMaintenanceWindows: [],
+    }),
+    summary,
+    monitors: patchedMonitors,
+  };
+}
+
 export function tryPatchPublicHomepagePayloadFromRuntimeUpdates(opts: {
   baseSnapshot: PublicHomepageResponse | null;
   now: number;
@@ -1960,6 +2090,20 @@ export async function tryComputePublicHomepagePayloadFromScheduledRuntimeUpdates
       opts.trace.setLabel('refresh_compute', 'full_compute_fallback');
     }
     return null;
+  }
+
+  const runtimePatched = withTraceSync(opts.trace, 'homepage_refresh_fast_runtime_patch', () =>
+    tryPatchPublicHomepagePayloadFromRuntimeSnapshot({
+      baseSnapshot,
+      runtimeSnapshot,
+      now: opts.now,
+    }),
+  );
+  if (runtimePatched) {
+    if (opts.trace?.enabled) {
+      opts.trace.setLabel('refresh_compute', 'runtime_snapshot_patch');
+    }
+    return runtimePatched;
   }
 
   const monitorData = await withTraceAsync(
