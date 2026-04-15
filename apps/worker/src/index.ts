@@ -163,10 +163,10 @@ async function handleInternalHomepageRefresh(request: Request, env: Env): Promis
     if (!skipInitialFreshnessCheck) {
       const generatedAt = trace
         ? await trace.timeAsync(
-            'homepage_refresh_read_generated_at_1',
-            async () => await readHomepageSnapshotGeneratedAt(env.DB),
+              'homepage_refresh_read_generated_at_1',
+            async () => await readHomepageSnapshotGeneratedAt(env.DB, now),
           )
-        : await readHomepageSnapshotGeneratedAt(env.DB);
+        : await readHomepageSnapshotGeneratedAt(env.DB, now);
       if (generatedAt !== null && isSameMinute(generatedAt, now)) {
         if (trace?.enabled) {
           trace.setLabel('skip', 'fresh');

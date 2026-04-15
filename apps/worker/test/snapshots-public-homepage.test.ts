@@ -457,34 +457,34 @@ describe('snapshots/public-homepage', () => {
     const artifactPayload = samplePayload(now - 60);
     const db = createFakeD1Database([
       {
-        match: 'select key, generated_at, updated_at, body_json from public_snapshots',
+        match: 'select key, generated_at, updated_at from public_snapshots',
         all: () => [
           {
             key: 'homepage',
             generated_at: payload.generated_at,
             updated_at: payload.generated_at,
-            body_json: JSON.stringify(payload),
           },
           {
             key: 'homepage:artifact',
             generated_at: artifactPayload.generated_at,
             updated_at: artifactPayload.generated_at,
-            body_json: JSON.stringify(buildHomepageRenderArtifact(artifactPayload)),
           },
         ],
       },
       {
-        match: 'from public_snapshots',
+        match: 'select generated_at, updated_at, body_json from public_snapshots',
         first: (args) => {
           if (args[0] === 'homepage') {
             return {
               generated_at: payload.generated_at,
+              updated_at: payload.generated_at,
               body_json: JSON.stringify(payload),
             };
           }
           if (args[0] === 'homepage:artifact') {
             return {
               generated_at: artifactPayload.generated_at,
+              updated_at: artifactPayload.generated_at,
               body_json: JSON.stringify(buildHomepageRenderArtifact(artifactPayload)),
             };
           }
@@ -496,6 +496,55 @@ describe('snapshots/public-homepage', () => {
     await expect(readHomepageRefreshBaseSnapshot(db, now)).resolves.toEqual({
       generatedAt: artifactPayload.generated_at,
       snapshot: artifactPayload,
+      seedDataSnapshot: false,
+    });
+  });
+
+  it('ignores future-dated refresh snapshot candidates', async () => {
+    const now = 1_728_000_500;
+    const validPayload = samplePayload(now - 60);
+    const futurePayload = samplePayload(now + 600);
+    const db = createFakeD1Database([
+      {
+        match: 'select key, generated_at, updated_at from public_snapshots',
+        all: () => [
+          {
+            key: 'homepage',
+            generated_at: futurePayload.generated_at,
+            updated_at: futurePayload.generated_at,
+          },
+          {
+            key: 'homepage:artifact',
+            generated_at: validPayload.generated_at,
+            updated_at: validPayload.generated_at,
+          },
+        ],
+      },
+      {
+        match: 'select generated_at, updated_at, body_json from public_snapshots',
+        first: (args) => {
+          if (args[0] === 'homepage') {
+            return {
+              generated_at: futurePayload.generated_at,
+              updated_at: futurePayload.generated_at,
+              body_json: JSON.stringify(futurePayload),
+            };
+          }
+          if (args[0] === 'homepage:artifact') {
+            return {
+              generated_at: validPayload.generated_at,
+              updated_at: validPayload.generated_at,
+              body_json: JSON.stringify(buildHomepageRenderArtifact(validPayload)),
+            };
+          }
+          return null;
+        },
+      },
+    ]);
+
+    await expect(readHomepageRefreshBaseSnapshot(db, now)).resolves.toEqual({
+      generatedAt: validPayload.generated_at,
+      snapshot: validPayload,
       seedDataSnapshot: false,
     });
   });

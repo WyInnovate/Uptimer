@@ -30,6 +30,8 @@ const LOCK_NAME = 'scheduler:tick';
 const LOCK_LEASE_SECONDS = 135;
 const INTERNAL_SCHEDULED_BATCH_SIZE = 6;
 const INTERNAL_SCHEDULED_BATCH_CONCURRENCY = 2;
+const HOMEPAGE_REFRESH_SERVICE_TIMEOUT_MS = 15_000;
+const INTERNAL_SCHEDULED_CHECK_BATCH_TIMEOUT_MS = 30_000;
 
 const CHECK_CONCURRENCY = 5;
 const D1_MAX_SQL_VARIABLES = 100;
@@ -131,15 +133,36 @@ function shouldTraceScheduledRefresh(env: Env): boolean {
   );
 }
 
+async function fetchSelfWithTimeout(
+  env: Env,
+  request: Request,
+  timeoutMs: number,
+  label: string,
+): Promise<Response> {
+  if (!env.SELF) {
+    throw new Error('SELF service binding missing');
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await env.SELF.fetch(new Request(request, { signal: controller.signal }));
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`${label} timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function refreshHomepageSnapshotViaService(
   env: Env,
   opts: {
     runtimeUpdates?: MonitorRuntimeUpdate[];
   } = {},
 ): Promise<HomepageRefreshServiceResult> {
-  if (!env.SELF) {
-    throw new Error('SELF service binding missing');
-  }
   if (!env.ADMIN_TOKEN) {
     throw new Error('ADMIN_TOKEN missing');
   }
@@ -161,7 +184,8 @@ async function refreshHomepageSnapshotViaService(
       headers['X-Uptimer-Trace-Token'] = traceToken;
     }
   }
-  const res = await env.SELF.fetch(
+  const res = await fetchSelfWithTimeout(
+    env,
     new Request('http://internal/api/v1/internal/refresh/homepage', {
       method: 'POST',
       headers,
@@ -172,24 +196,23 @@ async function refreshHomepageSnapshotViaService(
           })
         : env.ADMIN_TOKEN,
     }),
+    HOMEPAGE_REFRESH_SERVICE_TIMEOUT_MS,
+    'homepage refresh service',
   );
 
-  const bodyText = await res.text().catch(() => '');
   if (!res.ok) {
+    const bodyText = await res.text().catch(() => '');
     throw new Error(`service refresh failed: HTTP ${res.status} ${bodyText}`.trim());
   }
-  let refreshed: boolean | null = null;
-  if (bodyText) {
-    try {
-      const parsed = JSON.parse(bodyText) as { refreshed?: unknown };
-      refreshed = typeof parsed.refreshed === 'boolean' ? parsed.refreshed : null;
-    } catch {
-      refreshed = null;
-    }
+
+  try {
+    await res.body?.cancel();
+  } catch {
+    // Ignore best-effort body cancellation failures on service bindings.
   }
 
   return {
-    refreshed,
+    refreshed: null,
   };
 }
 
@@ -246,14 +269,12 @@ async function runScheduledCheckBatchViaService(
   env: Env,
   context: ScheduledCheckBatchServiceContext,
 ): Promise<ScheduledCheckBatchServiceResult> {
-  if (!env.SELF) {
-    throw new Error('SELF service binding missing');
-  }
   if (!env.ADMIN_TOKEN) {
     throw new Error('ADMIN_TOKEN missing');
   }
 
-  const res = await env.SELF.fetch(
+  const res = await fetchSelfWithTimeout(
+    env,
     new Request('http://internal/api/v1/internal/scheduled/check-batch', {
       method: 'POST',
       headers: {
@@ -270,6 +291,8 @@ async function runScheduledCheckBatchViaService(
         allow_notifications: context.allowNotifications || undefined,
       }),
     }),
+    INTERNAL_SCHEDULED_CHECK_BATCH_TIMEOUT_MS,
+    'scheduled check batch service',
   );
 
   const bodyText = await res.text().catch(() => '');
