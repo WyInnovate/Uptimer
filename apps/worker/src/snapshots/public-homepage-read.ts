@@ -524,65 +524,6 @@ function compareArtifactCandidates(a: SnapshotCandidate, b: SnapshotCandidate): 
   return a.key === SNAPSHOT_ARTIFACT_KEY ? -1 : 1;
 }
 
-function readCachedRefreshBaseSnapshotCandidate(
-  now: number,
-): { key: SnapshotKey; row: RawParsedSnapshotRow; seedDataSnapshot: boolean } | null {
-  const candidates: Array<{ key: SnapshotKey; row: RawParsedSnapshotRow }> = [];
-
-  for (const key of [SNAPSHOT_KEY, SNAPSHOT_ARTIFACT_KEY] as const) {
-    const row = parsedHomepagePayloadCacheGlobal.get(key);
-    if (!row) {
-      continue;
-    }
-    if (
-      isFutureSnapshotCandidate(
-        {
-          key,
-          generatedAt: row.generatedAt,
-          updatedAt: row.updatedAt,
-        },
-        now,
-      )
-    ) {
-      continue;
-    }
-    if (Math.max(0, now - row.generatedAt) > MAX_AGE_SECONDS * 2) {
-      continue;
-    }
-    candidates.push({ key, row });
-  }
-
-  if (candidates.length === 0) {
-    return null;
-  }
-
-  candidates.sort((left, right) =>
-    comparePayloadCandidates(
-      {
-        key: left.key,
-        generatedAt: left.row.generatedAt,
-        updatedAt: left.row.updatedAt,
-      },
-      {
-        key: right.key,
-        generatedAt: right.row.generatedAt,
-        updatedAt: right.row.updatedAt,
-      },
-    ),
-  );
-
-  const sameDay = candidates.find(({ row }) => isSameUtcDay(row.generatedAt, now));
-  const selected = sameDay ?? candidates[0] ?? null;
-  if (!selected) {
-    return null;
-  }
-
-  return {
-    ...selected,
-    seedDataSnapshot: !isSameUtcDay(selected.row.generatedAt, now),
-  };
-}
-
 function readValidatedSnapshotCandidateFromRefreshRows(opts: {
   db: D1Database;
   candidate: SnapshotCandidate;
@@ -754,27 +695,6 @@ export async function readHomepageRefreshBaseSnapshot(
   snapshot: PublicHomepageResponse | null;
   seedDataSnapshot: boolean;
 }> {
-  const cachedBase = readCachedRefreshBaseSnapshotCandidate(now);
-  if (cachedBase) {
-    writeCachedParsedSnapshotRow(
-      parsedHomepagePayloadCacheByDb,
-      db,
-      {
-        key: cachedBase.key,
-        generatedAt: cachedBase.row.generatedAt,
-        updatedAt: cachedBase.row.updatedAt,
-      },
-      cachedBase.row.rawBodyJson,
-      cachedBase.row.snapshot,
-    );
-
-    return {
-      generatedAt: cachedBase.row.generatedAt,
-      snapshot: cachedBase.row.snapshot,
-      seedDataSnapshot: cachedBase.seedDataSnapshot,
-    };
-  }
-
   const candidates = listSnapshotCandidatesFromRefreshRows(await readRefreshSnapshotMetadataRows(db))
     .filter((candidate) => !isFutureSnapshotCandidate(candidate, now))
     .sort(comparePayloadCandidates);

@@ -22,7 +22,6 @@ import {
   writeHomepageSnapshot,
 } from '../src/snapshots/public-homepage';
 import {
-  primeHomepageRefreshBaseSnapshotCache,
   readHomepageRefreshBaseSnapshot,
   readHomepageSnapshotJsonAnyAge,
 } from '../src/snapshots/public-homepage-read';
@@ -561,27 +560,6 @@ describe('snapshots/public-homepage', () => {
     await expect(readHomepageRefreshBaseSnapshot(db, now)).resolves.toEqual({
       generatedAt: validPayload.generated_at,
       snapshot: validPayload,
-      seedDataSnapshot: false,
-    });
-  });
-
-  it('reuses a primed refresh base snapshot cache before hitting D1 again', async () => {
-    const now = 1_728_000_500;
-    const payload = samplePayload(now - 60);
-    const db = createFakeD1Database([]);
-
-    primeHomepageRefreshBaseSnapshotCache({
-      db,
-      generatedAt: payload.generated_at,
-      updatedAt: payload.generated_at,
-      snapshot: payload,
-      renderBodyJson: JSON.stringify(buildHomepageRenderArtifact(payload)),
-      payloadBodyJson: JSON.stringify(payload),
-    });
-
-    await expect(readHomepageRefreshBaseSnapshot(db, now)).resolves.toEqual({
-      generatedAt: payload.generated_at,
-      snapshot: payload,
       seedDataSnapshot: false,
     });
   });
