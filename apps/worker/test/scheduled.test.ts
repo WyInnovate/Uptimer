@@ -270,6 +270,42 @@ describe('scheduler/scheduled regression', () => {
     expect(refreshPublicHomepageSnapshotIfNeeded).not.toHaveBeenCalled();
   });
 
+  it('emits scheduler trace headers and logs child refresh trace details when tracing is enabled', async () => {
+    const env = createEnv({ dueRows: [] }) as unknown as Env;
+    env.ADMIN_TOKEN = 'test-admin-token';
+    env.UPTIMER_TRACE_SCHEDULED_REFRESH = '1';
+    env.UPTIMER_TRACE_TOKEN = 'trace-token';
+    const selfFetch = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true, refreshed: true }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'X-Uptimer-Trace-Id': 'child-trace-id',
+          'X-Uptimer-Trace': 'route=internal/homepage-refresh;fast_path=scheduled_runtime',
+          'Server-Timing': 'w_homepage_refresh_read_snapshot_base;dur=3.00, w_total;dur=8.00',
+        },
+      }),
+    );
+    env.SELF = { fetch: selfFetch } as unknown as Fetcher;
+    const waitUntil = vi.fn();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await runScheduledTick(env, { waitUntil } as unknown as ExecutionContext);
+    await Promise.all(waitUntil.mock.calls.map((call) => call[0] as Promise<unknown>));
+
+    const req = selfFetch.mock.calls[0]?.[0] as Request;
+    expect(req.headers.get('X-Uptimer-Trace')).toBe('1');
+    expect(req.headers.get('X-Uptimer-Trace-Mode')).toBe('scheduled');
+    expect(req.headers.get('X-Uptimer-Trace-Token')).toBe('trace-token');
+    expect(req.headers.get('X-Uptimer-Trace-Id')).toBeTruthy();
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining('scheduled: homepage_refresh_trace'),
+    );
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining('response_trace_id=child-trace-id'),
+    );
+  });
+
   it('passes scheduler runtime updates to the internal homepage refresh service', async () => {
     const env = createEnv({
       dueRows: [

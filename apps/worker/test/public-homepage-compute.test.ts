@@ -959,10 +959,10 @@ describe('computePublicHomepagePayload', () => {
       {
         match: 'from public_snapshots',
         first: () => ({
-          generated_at: baseNow - 10,
+          generated_at: now - 5,
           body_json: JSON.stringify({
             version: 1,
-            generated_at: baseNow - 10,
+            generated_at: now - 5,
             day_start_at: dayStart,
             monitors: [
               {
@@ -1119,10 +1119,10 @@ describe('computePublicHomepagePayload', () => {
       {
         match: 'from public_snapshots',
         first: () => ({
-          generated_at: baseNow - 10,
+          generated_at: now - 5,
           body_json: JSON.stringify({
             version: 1,
-            generated_at: baseNow - 10,
+            generated_at: now - 5,
             day_start_at: dayStart,
             monitors: [
               {
@@ -1130,7 +1130,7 @@ describe('computePublicHomepagePayload', () => {
                 created_at: dayStart - 86_400,
                 interval_sec: 60,
                 range_start_at: dayStart,
-                materialized_at: baseNow - 10,
+                materialized_at: now - 5,
                 last_checked_at: baseNow,
                 last_status_code: 'u',
                 last_outage_open: false,

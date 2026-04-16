@@ -137,6 +137,7 @@ async function handleInternalHomepageRefresh(request: Request, env: Env): Promis
   if (trace?.enabled) {
     trace.setLabel('route', 'internal/homepage-refresh');
     trace.setLabel('now', now);
+    trace.setLabel('runtime_updates_count', runtimeUpdates?.length ?? 0);
   }
   const skipInitialFreshnessCheck = isScheduledRefreshRequest(request);
   if (trace?.enabled && skipInitialFreshnessCheck) {
@@ -223,6 +224,13 @@ async function handleInternalHomepageRefresh(request: Request, env: Env): Promis
           async () => await readHomepageRefreshBaseSnapshot(env.DB, now),
         )
       : await readHomepageRefreshBaseSnapshot(env.DB, now);
+    if (trace?.enabled) {
+      trace.setLabel('base_seed_data', baseSnapshot.seedDataSnapshot ? '1' : '0');
+      trace.setLabel(
+        'base_age_s',
+        baseSnapshot.generatedAt === null ? 'none' : Math.max(0, now - baseSnapshot.generatedAt),
+      );
+    }
     if (baseSnapshot.generatedAt !== null && isSameMinute(baseSnapshot.generatedAt, now)) {
       if (trace?.enabled) {
         trace.setLabel('skip', 'fresh_after_lease');

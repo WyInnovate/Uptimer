@@ -175,9 +175,11 @@ async function refreshHomepageSnapshotViaService(
       : 'text/plain; charset=utf-8',
     'X-Uptimer-Refresh-Source': 'scheduled',
   };
-  if (shouldTraceScheduledRefresh(env)) {
+  const traceScheduledRefresh = shouldTraceScheduledRefresh(env);
+  const traceId = traceScheduledRefresh ? crypto.randomUUID() : null;
+  if (traceScheduledRefresh) {
     headers['X-Uptimer-Trace'] = '1';
-    headers['X-Uptimer-Trace-Id'] = crypto.randomUUID();
+    headers['X-Uptimer-Trace-Id'] = traceId ?? crypto.randomUUID();
     headers['X-Uptimer-Trace-Mode'] = 'scheduled';
     const traceToken = readScheduledTraceToken(env);
     if (traceToken) {
@@ -198,6 +200,11 @@ async function refreshHomepageSnapshotViaService(
     HOMEPAGE_REFRESH_SERVICE_TIMEOUT_MS,
     'homepage refresh service',
   );
+  if (traceScheduledRefresh) {
+    console.log(
+      `scheduled: homepage_refresh_trace request_trace_id=${traceId ?? '-'} response_trace_id=${res.headers.get('X-Uptimer-Trace-Id') ?? '-'} response_trace=${res.headers.get('X-Uptimer-Trace') ?? '-'} server_timing=${res.headers.get('Server-Timing') ?? '-'}`,
+    );
+  }
 
   const bodyText = await res.text().catch(() => '');
   if (!res.ok) {

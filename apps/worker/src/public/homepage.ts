@@ -1593,6 +1593,10 @@ function tryPatchPublicHomepagePayloadFromRuntimeSnapshot(opts: {
     opts.trace?.setLabel('runtime_snapshot_patch_skip', 'runtime_window');
     return null;
   }
+  if (runtimeSnapshot.generated_at < baseSnapshot.generated_at) {
+    opts.trace?.setLabel('runtime_snapshot_patch_skip', 'runtime_older_than_base');
+    return null;
+  }
 
   const monitorIds = baseSnapshot.monitors.map((monitor) => monitor.id);
   const monitorIdSet = new Set(monitorIds);
@@ -1737,6 +1741,15 @@ function tryPatchPublicHomepagePayloadFromRuntimeSnapshot(opts: {
         },
       };
     } else {
+      if (
+        baseMonitor.last_checked_at !== null &&
+        (runtimeEntry.last_checked_at === null ||
+          runtimeEntry.last_checked_at < baseMonitor.last_checked_at)
+      ) {
+        opts.trace?.setLabel('runtime_snapshot_patch_skip', 'runtime_regressed');
+        return null;
+      }
+
       const heartbeats = runtimeEntryToHeartbeats(runtimeEntry);
       todayTotals = materializeMonitorRuntimeTotals(runtimeEntry, now);
       const presentation = computeHomepageMonitorPresentation(
