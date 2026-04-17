@@ -5,6 +5,13 @@ import type { Env } from '../env';
 import { hasValidAdminTokenRequest } from '../middleware/auth';
 import { AppError } from '../middleware/errors';
 import { cachePublic } from '../middleware/cache-public';
+import { utcDayStart } from '../analytics/uptime';
+import {
+  materializeMonitorRuntimeTotals,
+  readPublicMonitorRuntimeSnapshot,
+  snapshotHasMonitorIds,
+  toMonitorRuntimeEntryMap,
+} from '../public/monitor-runtime';
 import {
   buildNumberedPlaceholders,
   chunkPositiveIntegerIds,
@@ -39,6 +46,7 @@ function withVisibilityAwareCaching(res: Response, includeHiddenMonitors: boolea
 }
 
 const latencyRangeSchema = z.enum(['24h']);
+const uptimeOverviewRangeSchema = z.enum(['30d', '90d']);
 
 type IncidentRow = {
   id: number;
@@ -802,6 +810,139 @@ publicUiRoutes.get('/monitors/:id/latency', async (c) => {
     new Response(bodyJson, {
       status: 200,
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    }),
+    includeHiddenMonitors,
+  );
+});
+
+publicUiRoutes.get('/analytics/uptime', async (c) => {
+  const includeHiddenMonitors = isAuthorizedStatusAdminRequest(c);
+  const range = uptimeOverviewRangeSchema.optional().default('30d').parse(c.req.query('range'));
+
+  const now = Math.floor(Date.now() / 1000);
+  const rangeEnd = Math.floor(now / 60) * 60;
+  const rangeEndFullDays = utcDayStart(rangeEnd);
+  const rangeStart = rangeEnd - (range === '30d' ? 30 * 86400 : 90 * 86400);
+
+  const { results: monitorRows } = await c.env.DB
+    .prepare(
+      `
+        SELECT m.id, m.name, m.type
+        FROM monitors m
+        WHERE m.is_active = 1
+          AND ${monitorVisibilityPredicate(includeHiddenMonitors, 'm')}
+        ORDER BY m.id
+      `,
+    )
+    .all<{
+      id: number;
+      name: string;
+      type: string;
+    }>();
+
+  const monitors = monitorRows ?? [];
+  const monitorIds = monitors.map((monitor) => monitor.id);
+  const runtimeSnapshot =
+    monitorIds.length > 0 ? await readPublicMonitorRuntimeSnapshot(c.env.DB, rangeEnd) : null;
+  if (monitorIds.length > 0 && (!runtimeSnapshot || !snapshotHasMonitorIds(runtimeSnapshot, monitorIds))) {
+    const { publicRoutes } = await import('./public');
+    return publicRoutes.fetch(c.req.raw, c.env, c.executionCtx);
+  }
+
+  const { results: sumRows } = await c.env.DB
+    .prepare(
+      `
+        SELECT
+          monitor_id,
+          SUM(total_sec) AS total_sec,
+          SUM(downtime_sec) AS downtime_sec,
+          SUM(unknown_sec) AS unknown_sec,
+          SUM(uptime_sec) AS uptime_sec
+        FROM monitor_daily_rollups
+        WHERE day_start_at >= ?1 AND day_start_at < ?2
+        GROUP BY monitor_id
+      `,
+    )
+    .bind(rangeStart, rangeEndFullDays)
+    .all<{
+      monitor_id: number;
+      total_sec: number;
+      downtime_sec: number;
+      unknown_sec: number;
+      uptime_sec: number;
+    }>();
+
+  const rollupByMonitorId = new Map<
+    number,
+    { total_sec: number; downtime_sec: number; unknown_sec: number; uptime_sec: number }
+  >();
+  for (const row of sumRows ?? []) {
+    rollupByMonitorId.set(row.monitor_id, {
+      total_sec: row.total_sec ?? 0,
+      downtime_sec: row.downtime_sec ?? 0,
+      unknown_sec: row.unknown_sec ?? 0,
+      uptime_sec: row.uptime_sec ?? 0,
+    });
+  }
+
+  const runtimeByMonitorId = runtimeSnapshot ? toMonitorRuntimeEntryMap(runtimeSnapshot) : null;
+  let total_sec = 0;
+  let downtime_sec = 0;
+  let unknown_sec = 0;
+  let uptime_sec = 0;
+
+  const partialStart = rangeEndFullDays;
+  const partialEnd = rangeEnd;
+  const output = monitors.map((monitor) => {
+    const rollupTotals = rollupByMonitorId.get(monitor.id) ?? {
+      total_sec: 0,
+      downtime_sec: 0,
+      unknown_sec: 0,
+      uptime_sec: 0,
+    };
+    const partialTotals =
+      partialEnd > partialStart && runtimeByMonitorId
+        ? materializeMonitorRuntimeTotals(runtimeByMonitorId.get(monitor.id)!, partialEnd)
+        : { total_sec: 0, downtime_sec: 0, unknown_sec: 0, uptime_sec: 0, uptime_pct: null };
+
+    const totals = {
+      total_sec: rollupTotals.total_sec + partialTotals.total_sec,
+      downtime_sec: rollupTotals.downtime_sec + partialTotals.downtime_sec,
+      unknown_sec: rollupTotals.unknown_sec + partialTotals.unknown_sec,
+      uptime_sec: rollupTotals.uptime_sec + partialTotals.uptime_sec,
+    };
+
+    total_sec += totals.total_sec;
+    downtime_sec += totals.downtime_sec;
+    unknown_sec += totals.unknown_sec;
+    uptime_sec += totals.uptime_sec;
+
+    return {
+      id: monitor.id,
+      name: monitor.name,
+      type: monitor.type,
+      total_sec: totals.total_sec,
+      downtime_sec: totals.downtime_sec,
+      unknown_sec: totals.unknown_sec,
+      uptime_sec: totals.uptime_sec,
+      uptime_pct: totals.total_sec === 0 ? 0 : (totals.uptime_sec / totals.total_sec) * 100,
+    };
+  });
+
+  return withVisibilityAwareCaching(
+    c.json({
+      generated_at: now,
+      range,
+      range_start_at: rangeStart,
+      range_end_at: rangeEnd,
+      overall: {
+        total_sec,
+        downtime_sec,
+        unknown_sec,
+        uptime_sec,
+        uptime_pct: total_sec === 0 ? 0 : (uptime_sec / total_sec) * 100,
+      },
+      monitors: output,
     }),
     includeHiddenMonitors,
   );
