@@ -672,7 +672,7 @@ describe('internal homepage refresh route', () => {
     expect(computePublicHomepagePayload).toHaveBeenCalledTimes(1);
   });
 
-  it('fails closed when no scheduled runtime freshness baseline is available', async () => {
+  it('allows current-minute scheduled runtime updates without a freshness baseline', async () => {
     const now = 1_776_230_340;
     vi.spyOn(Date, 'now').mockReturnValue(now * 1000);
     const baseSnapshot = createBaseSnapshot(now);
@@ -724,12 +724,74 @@ describe('internal homepage refresh route', () => {
     expect(res.status).toBe(200);
     expect(tryComputePublicHomepagePayloadFromScheduledRuntimeUpdates).toHaveBeenCalledWith(
       expect.objectContaining({
+        updates: [
+          expect.objectContaining({
+            monitor_id: 1,
+            checked_at: now,
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('fails closed for non-current-minute updates when no freshness baseline is available', async () => {
+    const now = 1_776_230_340;
+    vi.spyOn(Date, 'now').mockReturnValue(now * 1000);
+    const baseSnapshot = createBaseSnapshot(now);
+    const env = {
+      DB: createFakeD1Database([
+        {
+          match: 'select key, generated_at, updated_at, body_json from public_snapshots',
+          all: () => [
+            {
+              key: 'homepage',
+              generated_at: baseSnapshot.generated_at,
+              updated_at: baseSnapshot.generated_at,
+              body_json: JSON.stringify(baseSnapshot),
+            },
+          ],
+        },
+        {
+          match: 'select generated_at, updated_at, body_json from public_snapshots',
+          first: () => null,
+        },
+      ]),
+      ADMIN_TOKEN: 'test-admin-token',
+    } as unknown as Env;
+    vi.mocked(tryComputePublicHomepagePayloadFromScheduledRuntimeUpdates).mockResolvedValue(
+      null as never,
+    );
+    vi.mocked(computePublicHomepagePayload).mockResolvedValue({
+      ...baseSnapshot,
+      generated_at: now,
+    } as never);
+
+    const res = await worker.fetch(
+      new Request('http://internal/api/v1/internal/refresh/homepage', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test-admin-token',
+          'Content-Type': 'application/json; charset=utf-8',
+          'X-Uptimer-Refresh-Source': 'scheduled',
+        },
+        body: JSON.stringify({
+          token: 'test-admin-token',
+          runtime_updates: [[1, 60, now - 300, now - 60, 'up', 'up', 55]],
+        }),
+      }),
+      env,
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
+    );
+
+    expect(res.status).toBe(200);
+    expect(tryComputePublicHomepagePayloadFromScheduledRuntimeUpdates).toHaveBeenCalledWith(
+      expect.objectContaining({
         updates: [],
       }),
     );
   });
 
-  it('fails closed when only monitor_state is available and the timestamp is ambiguous', async () => {
+  it('allows current-minute scheduled runtime updates when only monitor_state is available', async () => {
     const now = 1_776_230_340;
     vi.spyOn(Date, 'now').mockReturnValue(now * 1000);
     const baseSnapshot = createBaseSnapshot(now);
@@ -791,7 +853,12 @@ describe('internal homepage refresh route', () => {
     expect(res.status).toBe(200);
     expect(tryComputePublicHomepagePayloadFromScheduledRuntimeUpdates).toHaveBeenCalledWith(
       expect.objectContaining({
-        updates: [],
+        updates: [
+          expect.objectContaining({
+            monitor_id: 1,
+            checked_at: now,
+          }),
+        ],
       }),
     );
   });
