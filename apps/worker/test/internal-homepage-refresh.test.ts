@@ -913,6 +913,37 @@ describe('internal homepage refresh route', () => {
     expect(consoleLogSpy).not.toHaveBeenCalledWith(expect.stringContaining('internal-refresh:'));
   });
 
+  it('does not emit trace headers when the internal trace token is invalid', async () => {
+    const now = 1_776_230_340;
+    vi.spyOn(Date, 'now').mockReturnValue(now * 1000);
+    const env = createEnv(now);
+    (env as unknown as Record<string, unknown>).UPTIMER_TRACE_TOKEN = 'expected-token';
+
+    const res = await worker.fetch(
+      new Request('http://internal/api/v1/internal/refresh/homepage', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test-admin-token',
+          'Content-Type': 'application/json; charset=utf-8',
+          'X-Uptimer-Trace': '1',
+          'X-Uptimer-Trace-Token': 'wrong-token',
+          'X-Uptimer-Refresh-Source': 'scheduled',
+        },
+        body: JSON.stringify({
+          token: 'test-admin-token',
+          runtime_updates: [],
+        }),
+      }),
+      env,
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('X-Uptimer-Trace')).toBeNull();
+    expect(res.headers.get('X-Uptimer-Trace-Id')).toBeNull();
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(expect.stringContaining('internal-refresh:'));
+  });
+
   it('emits internal refresh trace labels when the trace token matches', async () => {
     const now = 1_776_230_340;
     vi.spyOn(Date, 'now').mockReturnValue(now * 1000);
