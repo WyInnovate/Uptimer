@@ -732,12 +732,15 @@ export async function tryComputePublicStatusPayloadFromScheduledRuntimeUpdates(o
   now: number;
   updates: MonitorRuntimeUpdate[];
   guardState?: StatusScheduledFastGuardState | null;
+  baseSnapshot?: PublicStatusResponse | null;
 }): Promise<PublicStatusResponse | null> {
-  const baseSnapshot = await readStatusSnapshotPayloadAnyAge(
-    opts.db,
-    opts.now,
-    STATUS_FAST_PATCH_MAX_STALE_SECONDS,
-  );
+  const baseSnapshot = opts.baseSnapshot
+    ? { data: opts.baseSnapshot }
+    : await readStatusSnapshotPayloadAnyAge(
+        opts.db,
+        opts.now,
+        STATUS_FAST_PATCH_MAX_STALE_SECONDS,
+      );
   if (!baseSnapshot || !canPatchStatusFromRuntime(baseSnapshot.data)) {
     return null;
   }

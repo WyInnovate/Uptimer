@@ -230,6 +230,7 @@ describe('internal homepage refresh route', () => {
     expect(tryComputePublicStatusPayloadFromScheduledRuntimeUpdates).toHaveBeenCalledWith({
       db: env.DB,
       now,
+      baseSnapshot: null,
       updates: [
         {
           monitor_id: 1,

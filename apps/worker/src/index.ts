@@ -633,7 +633,8 @@ async function handleInternalHomepageRefresh(request: Request, env: Env): Promis
       );
     }
 
-    const [homepageMod, snapshotMod, statusMod, statusSnapshotMod] = await Promise.all([
+    const [homepageMod, snapshotMod, statusMod, statusSnapshotMod, statusSnapshotReadMod] =
+      await Promise.all([
       trace
         ? trace.timeAsync('import_homepage_module', async () => await import('./public/homepage'))
         : import('./public/homepage'),
@@ -655,6 +656,12 @@ async function handleInternalHomepageRefresh(request: Request, env: Env): Promis
             async () => await import('./snapshots/public-status'),
           )
         : import('./snapshots/public-status'),
+      trace
+        ? trace.timeAsync(
+            'import_status_snapshot_read_module',
+            async () => await import('./snapshots/public-status-read'),
+          )
+        : import('./snapshots/public-status-read'),
     ]);
     let statusFastGuardState:
       | {
@@ -752,17 +759,26 @@ async function handleInternalHomepageRefresh(request: Request, env: Env): Promis
           snapshotMod.toHomepageSnapshotPayload(payload),
         )
       : snapshotMod.toHomepageSnapshotPayload(payload);
+    const statusBaseSnapshot = trace
+      ? await trace.timeAsync(
+          'status_refresh_read_base_snapshot',
+          async () =>
+            await statusSnapshotReadMod.readStatusSnapshotPayloadAnyAge(env.DB, now),
+        )
+      : await statusSnapshotReadMod.readStatusSnapshotPayloadAnyAge(env.DB, now);
     const statusRefreshArgs = statusFastGuardState
       ? {
           db: env.DB,
           now,
           updates: fastPathRuntimeUpdates,
           guardState: statusFastGuardState,
+          baseSnapshot: statusBaseSnapshot?.data ?? null,
         }
       : {
           db: env.DB,
           now,
           updates: fastPathRuntimeUpdates,
+          baseSnapshot: statusBaseSnapshot?.data ?? null,
         };
     const refreshedStatusPayload = trace
       ? await trace.timeAsync(
