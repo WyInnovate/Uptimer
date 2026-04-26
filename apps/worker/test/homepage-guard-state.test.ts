@@ -124,7 +124,7 @@ describe('homepage guard DB cache state', () => {
     });
   });
 
-  it('computes valid_until from the nearest visible maintenance boundary with a 60s cap', async () => {
+  it('computes valid_until from the nearest visible maintenance boundary with a 900s cap', async () => {
     const db = createFakeD1Database([
       {
         match: 'select min(boundary_at)',
@@ -133,6 +133,17 @@ describe('homepage guard DB cache state', () => {
     ]);
 
     await expect(computeHomepageGuardValidUntil(db, 1_700_000_000)).resolves.toBe(1_700_000_030);
+  });
+
+  it('caps valid_until when there is no nearer maintenance boundary', async () => {
+    const db = createFakeD1Database([
+      {
+        match: 'select min(boundary_at)',
+        first: () => ({ boundary_at: 1_700_001_500 }),
+      },
+    ]);
+
+    await expect(computeHomepageGuardValidUntil(db, 1_700_000_000)).resolves.toBe(1_700_000_900);
   });
 
   it('bumps component versions with prepared upserts and writes validated guard JSON', async () => {

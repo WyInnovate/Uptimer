@@ -8,6 +8,7 @@ const MONITOR_METADATA_KEY = 'homepage:monitor-metadata';
 const INCIDENTS_KEY = 'homepage:incidents';
 const MAINTENANCE_KEY = 'homepage:maintenance';
 const GUARD_KEY = 'homepage:guard';
+const HOMEPAGE_GUARD_MAX_VALID_SECONDS = 900;
 
 export const HOMEPAGE_GUARD_COMPONENT_KEYS = {
   settings: SETTINGS_KEY,
@@ -294,7 +295,7 @@ export async function readHomepageGuardCacheState(
 }
 
 export async function computeHomepageGuardValidUntil(db: D1Database, now: number): Promise<number> {
-  const maxValidUntil = now + 60;
+  const maxValidUntil = now + HOMEPAGE_GUARD_MAX_VALID_SECONDS;
   try {
     const row = await getReadNextMaintenanceBoundaryStatement(db)
       .bind(now)
