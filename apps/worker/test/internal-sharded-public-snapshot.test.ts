@@ -386,6 +386,55 @@ describe('internal sharded public snapshot continuation route', () => {
     ]);
   });
 
+  it('emits bounded continuation diagnostics when explicitly enabled', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const env = {
+      DB: createFakeD1Database([
+        {
+          match: 'from public_snapshot_fragments',
+          all: () => [],
+        },
+      ]),
+      ADMIN_TOKEN: 'test-admin-token',
+      UPTIMER_SCHEDULED_SHARDED_CONTINUATION: '1',
+      UPTIMER_SCHEDULED_RUNTIME_FRAGMENT_REFRESH: '1',
+      UPTIMER_SHARDED_CONTINUATION_DIAGNOSTICS: '1',
+    } as unknown as Env;
+
+    try {
+      const res = await worker.fetch(
+        new Request('http://internal/api/v1/internal/continue/sharded-public-snapshot', {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer test-admin-token',
+            'Content-Type': 'application/json; charset=utf-8',
+          },
+          body: JSON.stringify({ step: 'runtime' }),
+        }),
+        env,
+        { waitUntil: vi.fn() } as unknown as ExecutionContext,
+      );
+
+      expect(res.status).toBe(200);
+      await expect(res.json()).resolves.toMatchObject({
+        ok: true,
+        step: 'runtime',
+        refreshed: false,
+        continued: false,
+        diagnostic_step: 'runtime',
+        operation_ms: expect.any(Number),
+        queue_ms: expect.any(Number),
+        total_ms: expect.any(Number),
+      });
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('sharded_continuation_step step=runtime'),
+      );
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('skipped=no_updates'));
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
   it('runs one bounded seed step and queues the next continuation', async () => {
     const writes: unknown[][] = [];
     const generatedAt = Math.floor(Date.now() / 1000);

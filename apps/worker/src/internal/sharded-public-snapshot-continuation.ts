@@ -40,6 +40,10 @@ export type ShardedPublicSnapshotContinuationResult = {
   error?: boolean;
   errorName?: string;
   errorMessage?: string;
+  diagnosticStep?: string;
+  operationMs?: number;
+  queueMs?: number;
+  totalMs?: number;
 };
 
 const CONTINUATION_PATH = '/api/v1/internal/continue/sharded-public-snapshot';
@@ -81,6 +85,46 @@ function canAssembleShardedSnapshots(env: Env): boolean {
     isTruthyEnvFlag(raw.UPTIMER_PUBLIC_SHARDED_ASSEMBLER) &&
     isTruthyEnvFlag(raw.UPTIMER_SCHEDULED_SHARDED_ASSEMBLER)
   );
+}
+
+function shouldLogDiagnostics(env: Env): boolean {
+  return isTruthyEnvFlag((env as unknown as Record<string, unknown>).UPTIMER_SHARDED_CONTINUATION_DIAGNOSTICS);
+}
+
+function diagnosticStepName(step: ShardedPublicSnapshotContinuationStep): string {
+  if (step.step === 'runtime') return 'runtime';
+  if (step.step === 'assemble') return `assemble:${step.kind}`;
+  return `seed:${step.kind}:${step.part}:${step.monitorOffset ?? 0}`;
+}
+
+function logContinuationDiagnostics(
+  env: Env,
+  result: ShardedPublicSnapshotContinuationResult,
+): void {
+  if (!shouldLogDiagnostics(env)) return;
+  const fields = [
+    'sharded_continuation_step',
+    `step=${result.diagnosticStep ?? result.step}`,
+    result.kind ? `kind=${result.kind}` : null,
+    result.part ? `part=${result.part}` : null,
+    result.monitorOffset !== undefined ? `offset=${result.monitorOffset}` : null,
+    result.monitorLimit !== undefined ? `limit=${result.monitorLimit}` : null,
+    `ok=${result.ok ? 1 : 0}`,
+    `continued=${result.continued ? 1 : 0}`,
+    result.refreshed !== undefined ? `refreshed=${result.refreshed ? 1 : 0}` : null,
+    result.seeded !== undefined ? `seeded=${result.seeded ? 1 : 0}` : null,
+    result.assembled !== undefined ? `assembled=${result.assembled ? 1 : 0}` : null,
+    result.monitorCount !== undefined ? `monitors=${result.monitorCount}` : null,
+    result.writeCount !== undefined ? `writes=${result.writeCount}` : null,
+    result.invalidCount !== undefined ? `invalid=${result.invalidCount}` : null,
+    result.staleCount !== undefined ? `stale=${result.staleCount}` : null,
+    result.skipped ? `skipped=${result.skipped}` : null,
+    result.error ? 'error=1' : null,
+    result.operationMs !== undefined ? `operation_ms=${result.operationMs}` : null,
+    result.queueMs !== undefined ? `queue_ms=${result.queueMs}` : null,
+    result.totalMs !== undefined ? `total_ms=${result.totalMs}` : null,
+  ].filter((field): field is string => Boolean(field));
+  console.log(fields.join(' '));
 }
 
 function nextSeedStep(opts: {
@@ -204,18 +248,34 @@ export async function runShardedPublicSnapshotContinuation(opts: {
   now: number;
   step: ShardedPublicSnapshotContinuationStep;
 }): Promise<ShardedPublicSnapshotContinuationResult> {
+  const diagnostics = shouldLogDiagnostics(opts.env);
+  const startedAt = diagnostics ? Date.now() : 0;
+  const diagnosticStep = diagnosticStepName(opts.step);
+
   if (opts.step.step === 'runtime') {
     if (!canRefreshRuntimeFragments(opts.env)) {
-      return { ok: true, step: 'runtime', continued: false, skipped: 'runtime_disabled' };
+      const skippedResult: ShardedPublicSnapshotContinuationResult = {
+        ok: true,
+        step: 'runtime',
+        continued: false,
+        skipped: 'runtime_disabled',
+        ...(diagnostics ? { diagnosticStep, totalMs: Date.now() - startedAt } : {}),
+      };
+      logContinuationDiagnostics(opts.env, skippedResult);
+      return skippedResult;
     }
+    const operationStartedAt = diagnostics ? Date.now() : 0;
     const result = await refreshMonitorRuntimeSnapshotFromUpdateFragments({
       env: opts.env,
       now: opts.now,
     });
+    const operationMs = diagnostics ? Date.now() - operationStartedAt : undefined;
     const nextSteps = firstSeedSteps(readBoundedMonitorLimit(opts.env));
+    const queueStartedAt = diagnostics ? Date.now() : 0;
     const continuedCount = queueContinuations(opts.env, opts.ctx, nextSteps);
+    const queueMs = diagnostics ? Date.now() - queueStartedAt : undefined;
     const continued = continuedCount > 0;
-    return {
+    const continuationResult: ShardedPublicSnapshotContinuationResult = {
       ok: result.ok,
       step: 'runtime',
       refreshed: result.refreshed,
@@ -225,15 +285,38 @@ export async function runShardedPublicSnapshotContinuation(opts: {
       continued,
       ...(continued ? { nextSteps: nextSteps.slice(0, continuedCount) } : {}),
       ...(result.skip ? { skipped: result.skip } : {}),
+      ...(diagnostics
+        ? {
+            diagnosticStep,
+            operationMs: operationMs ?? 0,
+            queueMs: queueMs ?? 0,
+            totalMs: Date.now() - startedAt,
+          }
+        : {}),
     };
+    logContinuationDiagnostics(opts.env, continuationResult);
+    return continuationResult;
   }
 
   if (opts.step.step === 'seed') {
-    if (!canSeedShardedFragments(opts.env)) {
-      return { ok: true, step: 'seed', continued: false, skipped: 'seed_disabled' };
-    }
     const monitorLimit = readBoundedMonitorLimit(opts.env, opts.step.monitorLimit);
     const monitorOffset = Math.max(0, Math.floor(opts.step.monitorOffset ?? 0));
+    if (!canSeedShardedFragments(opts.env)) {
+      const skippedResult: ShardedPublicSnapshotContinuationResult = {
+        ok: true,
+        step: 'seed',
+        kind: opts.step.kind,
+        part: opts.step.part,
+        monitorOffset,
+        monitorLimit,
+        continued: false,
+        skipped: 'seed_disabled',
+        ...(diagnostics ? { diagnosticStep, totalMs: Date.now() - startedAt } : {}),
+      };
+      logContinuationDiagnostics(opts.env, skippedResult);
+      return skippedResult;
+    }
+    const operationStartedAt = diagnostics ? Date.now() : 0;
     const result = await seedShardedPublicSnapshotFragments({
       env: opts.env,
       kind: opts.step.kind,
@@ -242,6 +325,7 @@ export async function runShardedPublicSnapshotContinuation(opts: {
       offset: monitorOffset,
       limit: monitorLimit,
     });
+    const operationMs = diagnostics ? Date.now() - operationStartedAt : undefined;
     const nextStep = result.ok
       ? nextSeedStep({
           kind: opts.step.kind,
@@ -251,8 +335,10 @@ export async function runShardedPublicSnapshotContinuation(opts: {
           monitorCount: result.monitorCount,
         })
       : null;
+    const queueStartedAt = diagnostics ? Date.now() : 0;
     const continued = queueContinuation(opts.env, opts.ctx, nextStep);
-    return {
+    const queueMs = diagnostics ? Date.now() - queueStartedAt : undefined;
+    const continuationResult: ShardedPublicSnapshotContinuationResult = {
       ok: result.ok,
       step: 'seed',
       seeded: result.seeded,
@@ -266,18 +352,39 @@ export async function runShardedPublicSnapshotContinuation(opts: {
       ...(continued && nextStep ? { nextStep } : {}),
       ...(result.skipped ? { skipped: result.skipped } : {}),
       ...(result.error ? { error: true } : {}),
+      ...(diagnostics
+        ? {
+            diagnosticStep,
+            operationMs: operationMs ?? 0,
+            queueMs: queueMs ?? 0,
+            totalMs: Date.now() - startedAt,
+          }
+        : {}),
     };
+    logContinuationDiagnostics(opts.env, continuationResult);
+    return continuationResult;
   }
 
   if (!canAssembleShardedSnapshots(opts.env)) {
-    return { ok: true, step: 'assemble', continued: false, skipped: 'assemble_disabled' };
+    const skippedResult: ShardedPublicSnapshotContinuationResult = {
+      ok: true,
+      step: 'assemble',
+      kind: opts.step.kind,
+      continued: false,
+      skipped: 'assemble_disabled',
+      ...(diagnostics ? { diagnosticStep, totalMs: Date.now() - startedAt } : {}),
+    };
+    logContinuationDiagnostics(opts.env, skippedResult);
+    return skippedResult;
   }
+  const operationStartedAt = diagnostics ? Date.now() : 0;
   const result = await assembleShardedPublicSnapshot({
     env: opts.env,
     kind: opts.step.kind,
     mode: readAssemblyMode(opts.env),
   });
-  return {
+  const operationMs = diagnostics ? Date.now() - operationStartedAt : undefined;
+  const continuationResult: ShardedPublicSnapshotContinuationResult = {
     ok: result.ok,
     step: 'assemble',
     assembled: result.assembled,
@@ -290,5 +397,10 @@ export async function runShardedPublicSnapshotContinuation(opts: {
     ...(result.error ? { error: true } : {}),
     ...(result.errorName ? { errorName: result.errorName } : {}),
     ...(result.errorMessage ? { errorMessage: result.errorMessage } : {}),
+    ...(diagnostics
+      ? { diagnosticStep, operationMs: operationMs ?? 0, totalMs: Date.now() - startedAt }
+      : {}),
   };
+  logContinuationDiagnostics(opts.env, continuationResult);
+  return continuationResult;
 }
